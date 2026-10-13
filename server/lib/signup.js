@@ -20,3 +20,22 @@ export async function createPendingUser({ name, email, passwordHash = null, goog
     name, email, passwordHash, googleEmail, Date.now(),
   );
 }
+
+/**
+ * True when a Google-verified email belongs to the workspace's trusted domain and the admin
+ * enabled auto-approval. Only used for Google sign-in, where Google has proven email ownership.
+ */
+export async function isAutoApproved(email, emailVerified) {
+  const s = await getSettings();
+  return !!(emailVerified === true && s.allowSignup && s.autoApproveDomain && s.signupDomain && email.endsWith(`@${s.signupDomain}`));
+}
+
+/** Creates an active member straight away and returns its id. */
+export async function createActiveMember({ name, email, googleEmail = null }) {
+  const { rows } = await q.run(
+    `INSERT INTO users (name, email, password_hash, role, active, pending, google_email, created_at)
+     VALUES (?, ?, NULL, 'member', 1, 0, ?, ?) RETURNING id`,
+    name, email, googleEmail, Date.now(),
+  );
+  return rows[0].id;
+}

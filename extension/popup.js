@@ -2,6 +2,13 @@ import { SERVER } from './config.js';
 import { api, AuthError, getToken, setToken, formatDuration, updateBadge } from './api.js';
 
 const $ = (id) => document.getElementById(id);
+const PLAY_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+const STOP_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/></svg>';
+const SMALL_PLAY = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+const fmtHours = (ms) => {
+  const m = Math.round(ms / 60000);
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+};
 const emptyDraft = () => ({ description: '', projectId: null, taskId: null, tagIds: [], billable: false });
 
 const state = {
@@ -137,10 +144,12 @@ function renderTimer() {
   $('billable').classList.toggle('on', !!c.billable);
   $('tags-btn').classList.toggle('on', c.tagIds.length > 0);
   const names = c.tagIds.map((tagId) => state.tags.find((t) => t.id === tagId)?.name).filter(Boolean);
-  $('tag-names').textContent = names.length ? `Tags: ${names.join(', ')}` : '';
+  $('tag-names').textContent = names.join(', ');
   const btn = $('toggle');
-  btn.textContent = state.running ? 'Stop' : 'Start';
-  btn.className = `btn ${state.running ? 'stop' : 'primary start'}`;
+  btn.innerHTML = state.running ? STOP_ICON : PLAY_ICON;
+  btn.className = `play-btn ${state.running ? 'stop' : ''}`;
+  btn.setAttribute('aria-label', state.running ? 'Stop timer' : 'Start timer');
+  btn.title = state.running ? 'Stop timer' : 'Start timer';
   renderTags();
   tick();
 }
@@ -148,7 +157,7 @@ function renderTimer() {
 function tick() {
   const elapsed = state.running ? Date.now() - state.running.start : 0;
   $('clock').textContent = formatDuration(elapsed);
-  $('today-total').textContent = formatDuration(state.todayDone + elapsed);
+  $('today-total').textContent = fmtHours(state.todayDone + elapsed);
 }
 
 function renderRecent() {
@@ -166,7 +175,7 @@ function renderRecent() {
     const proj = Object.assign(document.createElement('div'), { className: 'p' });
     if (p || e.projectName) {
       const color = p?.color ?? e.projectColor ?? '#999';
-      proj.style.color = color;
+
       const dot = Object.assign(document.createElement('span'), { className: 'dot' });
       dot.style.background = color;
       proj.append(dot, document.createTextNode(`${p?.name ?? e.projectName}${e.taskName ? `: ${e.taskName}` : ''}`));
@@ -176,7 +185,7 @@ function renderRecent() {
     }
     info.append(proj);
     const dur = Object.assign(document.createElement('span'), { className: 'dur', textContent: formatDuration(e.end - e.start) });
-    const play = Object.assign(document.createElement('button'), { className: 'play', title: 'Continue', textContent: '▶' });
+    const play = Object.assign(document.createElement('button'), { className: 'play', title: 'Continue', innerHTML: SMALL_PLAY });
     play.addEventListener('click', () => start({ description: e.description, projectId: e.projectId, taskId: e.taskId, tagIds: e.tagIds, billable: e.billable }));
     li.append(info, dur, play);
     list.append(li);

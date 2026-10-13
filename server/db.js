@@ -152,6 +152,7 @@ const DEFAULT_SETTINGS = {
   membersSeeTeamDashboard: '0',
   allowSignup: '1',
   signupDomain: '',
+  autoApproveDomain: '1',
 };
 
 // Settings only change through setSettings in this process, so they are cached in memory.
@@ -171,6 +172,7 @@ export async function getSettings() {
     membersSeeTeamDashboard: raw.membersSeeTeamDashboard === '1',
     allowSignup: raw.allowSignup === '1',
     signupDomain: raw.signupDomain || '',
+    autoApproveDomain: raw.autoApproveDomain === '1',
   };
   return settingsCache;
 }

@@ -130,7 +130,11 @@ export function Signup({ boot }) {
               {error && <div className="form-error">{error}</div>}
               <button type="submit" className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Sending…' : 'Sign up'}</button>
             </form>
-            <p className="auth-foot">New accounts are activated after a workspace admin approves them.</p>
+            <p className="auth-foot">
+              {boot.autoApproveDomain && boot.signupDomain && boot.googleLogin
+                ? `Use Sign up with Google with your @${boot.signupDomain} account to get access instantly. Other sign-ups wait for an admin to approve them.`
+                : 'New accounts are activated after a workspace admin approves them.'}
+            </p>
           </>
         )}
         <p className="auth-switch">Already have an account? <Link to="/login">Log in</Link></p>

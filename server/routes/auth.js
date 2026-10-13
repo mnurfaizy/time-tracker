@@ -25,6 +25,7 @@ r.get('/state', async (req, res) => {
     workspaceName: settings.workspaceName,
     allowSignup: settings.allowSignup,
     signupDomain: settings.signupDomain,
+    autoApproveDomain: settings.autoApproveDomain,
   });
 });
 

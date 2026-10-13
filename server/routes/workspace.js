@@ -27,6 +27,7 @@ r.put('/', requireAdmin, async (req, res) => {
   if ('membersCanCreate' in b) next.membersCanCreate = !!b.membersCanCreate;
   if ('membersSeeTeamDashboard' in b) next.membersSeeTeamDashboard = !!b.membersSeeTeamDashboard;
   if ('allowSignup' in b) next.allowSignup = !!b.allowSignup;
+  if ('autoApproveDomain' in b) next.autoApproveDomain = !!b.autoApproveDomain;
   if ('signupDomain' in b) {
     const d = String(b.signupDomain ?? '').trim().toLowerCase().replace(/^@/, '');
     if (d && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) throw bad('Enter a domain like yourcompany.com, or leave it empty');

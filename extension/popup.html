@@ -3,11 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <title>Time Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <header class="top">
-    <span class="logo"><img src="icons/icon-32.png" alt="" width="20" height="20" /><span>time<b>tracker</b></span></span>
+    <span class="logo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></svg>
+      <span>timetracker.</span>
+    </span>
     <span class="top-actions">
       <button id="open-app" class="link" title="Open Time Tracker">Open app ↗</button>
       <button id="logout" class="link hidden" title="Sign out">Sign out</button>
@@ -31,7 +37,7 @@
         <p class="muted small">Open the app → <b>Profile settings</b> → <b>Browser extension</b> → <b>Get sign-in code</b>, then paste it here.</p>
         <form id="code-form" class="stack">
           <input id="code" type="text" placeholder="Paste sign-in code" required />
-          <button type="submit" class="btn">Sign in with code</button>
+          <button type="submit" class="btn outline">Sign in with code</button>
         </form>
       </details>
     </div>
@@ -39,23 +45,30 @@
 
   <!-- Tracker -->
   <section id="main-view" class="hidden">
-    <div class="card timer">
+    <div class="timer">
       <input id="description" class="desc" placeholder="What are you working on?" autocomplete="off" />
       <div class="row">
-        <select id="project" class="project"></select>
-        <button id="tags-btn" class="icon-btn" title="Tags"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></button>
-        <button id="billable" class="icon-btn" title="Billable">$</button>
+        <select id="project" class="project" aria-label="Project"></select>
+        <button id="tags-btn" class="icon-btn" title="Tags" aria-label="Tags">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+        </button>
+        <button id="billable" class="icon-btn" title="Billable" aria-label="Billable">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+        </button>
       </div>
       <div id="tags-panel" class="tags-panel hidden"></div>
-      <div class="row timer-row">
-        <span id="clock" class="clock">0:00:00</span>
-        <button id="toggle" class="btn primary start">Start</button>
-      </div>
       <div id="tag-names" class="tag-names"></div>
+      <div class="timer-row">
+        <span id="clock" class="clock">0:00:00</span>
+        <button id="toggle" class="play-btn" aria-label="Start timer"></button>
+      </div>
     </div>
 
-    <div class="today">Today <b id="today-total">0:00:00</b></div>
-    <div class="card">
+    <div class="today-head">
+      <span class="today-title">Today</span>
+      <span class="badge solid" id="today-total">0h 00m</span>
+    </div>
+    <div class="list">
       <div class="list-title">Recent activities</div>
       <ul id="recent" class="recent"></ul>
     </div>

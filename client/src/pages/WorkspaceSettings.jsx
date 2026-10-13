@@ -87,6 +87,13 @@ export default function WorkspaceSettings() {
         <Field label="Only allow emails from this domain (optional)" hint="For example rakamin.com. Leave empty to allow any email address.">
           <input className="input" placeholder="yourcompany.com" value={form.signupDomain} onChange={(e) => set('signupDomain', e.target.value)} disabled={!form.allowSignup} />
         </Field>
+        <div className="setting-row">
+          <div>
+            <div className="setting-title">Auto-approve Google sign-ups from {form.signupDomain ? `@${form.signupDomain.replace(/^@/, '')}` : 'this domain'}</div>
+            <div className="setting-desc">People who sign in with a Google account on this domain join instantly as Members, no approval needed. Email + password sign-ups still wait for approval, because their email address is not verified.</div>
+          </div>
+          <Toggle checked={form.autoApproveDomain} onChange={(v) => set('autoApproveDomain', v)} disabled={!form.allowSignup || !form.signupDomain} />
+        </div>
 
         <button type="submit" className="btn btn-primary" disabled={busy}>Save settings</button>
       </form>
