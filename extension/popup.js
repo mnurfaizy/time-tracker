@@ -1,5 +1,6 @@
 import { SERVER } from './config.js';
 import { api, AuthError, getToken, setToken, formatDuration, updateBadge } from './api.js';
+import { setupVoice } from './voice.js';
 
 const $ = (id) => document.getElementById(id);
 const PLAY_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
@@ -20,6 +21,7 @@ const state = {
   recentAll: [],
   todayDone: 0,
   tagsOpen: false,
+  canCreate: false,
 };
 let ticker = null;
 
@@ -344,7 +346,7 @@ async function setFields(patch) {
 }
 
 async function start(fields) {
-  await guard(async () => {
+  return guard(async () => {
     const d = await api('POST', '/entries/start', fields);
     state.running = d.entry;
     state.draft = emptyDraft();
@@ -353,6 +355,7 @@ async function start(fields) {
     chrome.runtime.sendMessage({ type: 'refresh' }).catch(() => {});
     await loadRecent();
     renderTimer();
+    return true;
   });
 }
 
@@ -406,11 +409,13 @@ async function loadRecent() {
 }
 
 async function loadMain() {
-  const [{ projects }, { tags }, { entry }] = await Promise.all([
+  const [{ projects }, { tags }, { entry }, me] = await Promise.all([
     api('GET', '/projects'),
     api('GET', '/tags'),
     api('GET', '/entries/running'),
+    api('GET', '/auth/me'),
   ]);
+  state.canCreate = me.user.role === 'admin' || !!me.settings?.membersCanCreate;
   state.projects = projects;
   state.tags = tags;
   state.running = entry;
@@ -421,6 +426,24 @@ async function loadMain() {
   if (!ticker) ticker = setInterval(tick, 1000);
   if (!entry) $('description').focus();
 }
+
+// ---------------------------------------------------------------- Dictation
+
+const NEW_PROJECT_COLORS = ['#3E8E5E', '#4F68D8', '#C2861A', '#D24A3F', '#8E5EA8', '#2A9D8F', '#E07A5F', '#5C7AEA'];
+
+setupVoice({
+  context: () => ({ projects: state.projects, recent: state.recentAll, canCreate: state.canCreate, running: state.running }),
+  start: async (fields) => {
+    if (!(await start(fields))) throw new Error($('error').textContent || 'Could not start the timer');
+  },
+  createProject: async (name) => {
+    const color = NEW_PROJECT_COLORS[state.projects.length % NEW_PROJECT_COLORS.length];
+    const { project } = await api('POST', '/projects', { name, color, clientId: null });
+    state.projects = [...state.projects, project];
+    return project;
+  },
+  openPicker: () => openPicker(true),
+});
 
 (async () => {
   if (!(await getToken())) {
