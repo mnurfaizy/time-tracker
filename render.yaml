@@ -1,0 +1,21 @@
+# Render Blueprint: free web service. The database lives in Turso (see README).
+services:
+  - type: web
+    name: timetracker
+    runtime: node
+    plan: free
+    region: oregon # same region as the Turso database (AWS us-west-2) for fast queries
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
