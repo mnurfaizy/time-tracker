@@ -186,7 +186,15 @@ function renderRecent() {
     info.append(proj);
     const dur = Object.assign(document.createElement('span'), { className: 'dur', textContent: formatDuration(e.end - e.start) });
     const play = Object.assign(document.createElement('button'), { className: 'play', title: 'Continue', innerHTML: SMALL_PLAY });
-    play.addEventListener('click', () => start({ description: e.description, projectId: e.projectId, taskId: e.taskId, tagIds: e.tagIds, billable: e.billable }));
+    const fields = { description: e.description, projectId: e.projectId, taskId: e.taskId, tagIds: e.tagIds, billable: e.billable };
+    // The whole row is clickable: one click starts tracking this activity again.
+    li.classList.add('clickable');
+    li.title = state.running ? 'Switch to this activity' : 'Start this activity';
+    li.addEventListener('click', () => start(fields));
+    play.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      start(fields);
+    });
     li.append(info, dur, play);
     list.append(li);
   }
@@ -253,7 +261,10 @@ $('project').addEventListener('change', (e) => {
   const project = state.projects.find((p) => p.id === projectId);
   const patch = { projectId, taskId: kind === 't' ? Number(tid) : null };
   if (project && projectId !== current().projectId) patch.billable = project.billable;
-  setFields(patch);
+  // Description typed + project chosen while idle: start right away.
+  const typed = $('description').value.trim();
+  if (!state.running && projectId && typed) start({ ...state.draft, description: typed, ...patch });
+  else setFields(patch);
 });
 
 $('billable').addEventListener('click', () => setFields({ billable: !current().billable }));

@@ -278,12 +278,16 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
     }
   };
 
-  const startTimer = async () => {
+  const startTimer = async (overrides = {}) => {
+    if (busy) return;
     setBusy(true);
-    await onStart({ ...draft, description: desc });
+    await onStart({ ...draft, description: desc, ...overrides });
     setDraft(emptyDraft);
     setBusy(false);
   };
+
+  // In timer mode, picking an activity or a project starts tracking right away (no extra Start click).
+  const autoStart = !running && effectiveMode === 'timer';
 
   const add = async () => {
     setBusy(true);
@@ -299,13 +303,15 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
   const applySuggestion = (s) => {
     setDesc(s.description);
     const p = s.projectId ? projectById.get(s.projectId) : null;
-    setFields({
+    const fields = {
       description: s.description,
       projectId: p ? s.projectId : null,
       taskId: p ? s.taskId : null,
       tagIds: s.tagIds,
       billable: s.billable,
-    });
+    };
+    if (autoStart) startTimer(fields);
+    else setFields(fields);
   };
 
   return (
@@ -315,7 +321,7 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
         onChange={setDesc}
         onCommit={commitDesc}
         onEnter={() => {
-          if (!running && effectiveMode === 'timer') startTimer();
+          if (autoStart) startTimer();
           else commitDesc();
         }}
         onSuggestion={applySuggestion}
@@ -328,7 +334,9 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
           onChange={({ projectId, taskId, project }) => {
             const patch = { projectId, taskId };
             if (project && projectId !== current.projectId) patch.billable = project.billable;
-            setFields(patch);
+            // Description typed + project chosen = ready to go: start the timer immediately.
+            if (autoStart && projectId && desc.trim()) startTimer(patch);
+            else setFields(patch);
           }}
         />
         <span className="vsep" />
@@ -347,7 +355,7 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
                 <Square size={18} />
               </button>
             ) : (
-              <button type="button" className="play-btn" onClick={startTimer} disabled={busy} title="Start timer" aria-label="Start timer">
+              <button type="button" className="play-btn" onClick={() => startTimer()} disabled={busy} title="Start timer" aria-label="Start timer">
                 <Play size={20} />
               </button>
             )}
