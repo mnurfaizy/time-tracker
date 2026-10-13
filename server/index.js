@@ -15,6 +15,7 @@ import tagRoutes from './routes/tags.js';
 import entryRoutes from './routes/entries.js';
 import reportRoutes from './routes/reports.js';
 import importRoutes from './routes/import.js';
+import extensionRoutes from './routes/extension.js';
 import googleRoutes from './routes/google.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -59,6 +60,7 @@ app.use('/api/tags', tagRoutes);
 app.use('/api/entries', entryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/import', importRoutes);
+app.use('/api/extension', extensionRoutes);
 app.use('/api/google', googleRoutes);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

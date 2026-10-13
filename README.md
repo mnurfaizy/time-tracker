@@ -122,6 +122,19 @@ Ikuti bagian **Google Calendar** di atas dengan redirect URI `https://ALAMAT-AND
 ### Backup
 Data ada di Turso. Untuk cadangan tambahan, admin bisa rutin ekspor **Reports → Detailed → Export CSV** untuk rentang "This year".
 
+## Ekstensi browser (seperti Clockify)
+
+Start/stop timer langsung dari toolbar Chrome, Edge, Brave atau Opera: deskripsi, project/task, tag, billable, daftar aktivitas terakhir (▶ untuk melanjutkan), dan ikon yang berubah biru + badge waktu saat timer berjalan.
+
+1. Di aplikasi: **Profile settings → Browser extension → Download extension (.zip)**. ZIP ini sudah otomatis tersetel ke alamat server Anda.
+2. Ekstrak ke folder yang tidak akan dihapus.
+3. Buka `chrome://extensions` (Edge: `edge://extensions`) → aktifkan **Developer mode** → **Load unpacked** → pilih folder `time-tracker-extension`.
+4. Pin ekstensi di toolbar lalu sign in dengan email + password. Pengguna yang login lewat Google memakai **Get sign-in code** di Profile settings.
+
+Shortcut: **Alt+Shift+U** membuka ekstensi, **Alt+Shift+S** start/stop timer (bisa diubah di `chrome://extensions/shortcuts`).
+
+Kode sumber ekstensi ada di folder `extension/`. Ikon dibuat ulang dengan `node scripts/make-icons.mjs`. Jika ingin dipasang tanpa Developer mode, ekstensi bisa diunggah ke Microsoft Edge Add-ons (gratis) atau Chrome Web Store (biaya pendaftaran developer sekali bayar).
+
 ## Alternatif: jalankan di server sendiri
 Tanpa `TURSO_*`, aplikasi memakai file database lokal di folder `data/`, jadi juga bisa dijalankan di PC/VM sendiri (`npm start`, atau `docker compose up -d --build`). Untuk dipakai tim dari luar kantor, dibutuhkan alamat HTTPS (mis. Cloudflare Tunnel dengan domain sendiri).
 

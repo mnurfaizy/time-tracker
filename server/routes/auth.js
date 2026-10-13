@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { q, getSettings, setSettings } from '../db.js';
-import { createSession, destroySession, hashPassword, verifyPassword, requireAuth, publicUser } from '../auth.js';
+import { createSession, createToken, destroySession, hashPassword, verifyPassword, requireAuth, publicUser } from '../auth.js';
 import { googleConfigured } from '../lib/google.js';
 import { HttpError, bad, reqStr, email, password, str } from '../util.js';
 
@@ -48,6 +48,24 @@ r.post('/login', async (req, res) => {
   attempts.delete(req.ip);
   await createSession(req, res, user.id);
   res.json({ ok: true });
+});
+
+// Browser extension sign-in with email + password: returns a token instead of setting a cookie.
+r.post('/token', async (req, res) => {
+  rateLimit(req);
+  const mail = str(req.body.email, 254).toLowerCase();
+  const user = await q.get('SELECT * FROM users WHERE email = ?', mail);
+  if (!user || !verifyPassword(String(req.body.password ?? ''), user.password_hash)) {
+    throw new HttpError(401, 'Invalid email or password');
+  }
+  if (!user.active) throw new HttpError(403, 'Your account has been deactivated. Please contact your workspace admin.');
+  attempts.delete(req.ip);
+  res.json({ token: await createToken(user.id), user: publicUser(user) });
+});
+
+// One-time sign-in code for the browser extension, for people who log in with Google.
+r.post('/extension-code', requireAuth, async (req, res) => {
+  res.json({ code: await createToken(req.user.id) });
 });
 
 r.post('/logout', async (req, res) => {

@@ -43,14 +43,25 @@ const isSecure = (req) => req.secure || (process.env.APP_URL || process.env.REND
 function setCookie(req, res, token) {
   res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: isSecure(req), maxAge: TTL, path: '/' });
 }
-export async function createSession(req, res, userId) {
+/** Bearer token from the browser extension (Authorization: Bearer ...). */
+function readBearer(req) {
+  const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization || '');
+  return m ? m[1] : null;
+}
+
+/** Creates a session and returns its token (used directly by the browser extension). */
+export async function createToken(userId) {
   const token = crypto.randomBytes(32).toString('base64url');
   await q.run('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', sha256(token), userId, Date.now() + TTL);
-  setCookie(req, res, token);
+  return token;
+}
+
+export async function createSession(req, res, userId) {
+  setCookie(req, res, await createToken(userId));
 }
 
 export async function destroySession(req, res) {
-  const token = readCookie(req, COOKIE);
+  const token = readBearer(req) || readCookie(req, COOKIE);
   if (token) await q.run('DELETE FROM sessions WHERE token_hash = ?', sha256(token));
   res.clearCookie(COOKIE, { path: '/' });
 }
@@ -61,7 +72,8 @@ export async function deleteUserSessions(userId) {
 
 /** Returns the logged-in user row (or null). Extends the session when it is past half-life. */
 export async function currentUser(req, res) {
-  const token = readCookie(req, COOKIE);
+  const bearer = readBearer(req);
+  const token = bearer || readCookie(req, COOKIE);
   if (!token) return null;
   const hash = sha256(token);
   const row = await q.get(
@@ -71,7 +83,7 @@ export async function currentUser(req, res) {
   if (!row || row.session_expires < Date.now() || !row.active) return null;
   if (res && row.session_expires - Date.now() < TTL / 2) {
     await q.run('UPDATE sessions SET expires_at = ? WHERE token_hash = ?', Date.now() + TTL, hash);
-    setCookie(req, res, token);
+    if (!bearer) setCookie(req, res, token);
   }
   return row;
 }

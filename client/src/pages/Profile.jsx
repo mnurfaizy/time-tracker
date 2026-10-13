@@ -4,6 +4,7 @@ import { CalendarDays, CircleCheck, TriangleAlert } from 'lucide-react';
 import { api } from '../api.js';
 import { useData } from '../store.jsx';
 import { Field, Toggle } from '../components/ui.jsx';
+import { ExtensionCard } from '../components/ExtensionCard.jsx';
 
 const GOOGLE_MESSAGES = {
   connected: ['success', 'Google Calendar connected.'],
@@ -119,6 +120,8 @@ export default function Profile() {
           </>
         )}
       </div>
+
+      <ExtensionCard />
 
       <form className="card pad-lg settings-form" onSubmit={saveProfile}>
         <h3 className="section-title first">Profile</h3>

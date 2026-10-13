@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Time Tracker</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="top">
+    <span class="logo"><img src="icons/icon-32.png" alt="" width="20" height="20" /><span>time<b>tracker</b></span></span>
+    <span class="top-actions">
+      <button id="open-app" class="link" title="Open Time Tracker">Open app ↗</button>
+      <button id="logout" class="link hidden" title="Sign out">Sign out</button>
+    </span>
+  </header>
+
+  <div id="error" class="error hidden"></div>
+
+  <!-- Sign in -->
+  <section id="login-view" class="hidden">
+    <div class="card pad">
+      <h2>Sign in</h2>
+      <p class="muted small" id="server-label"></p>
+      <form id="login-form" class="stack">
+        <input id="email" type="email" placeholder="Email" autocomplete="email" required />
+        <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
+        <button type="submit" class="btn primary">Sign in</button>
+      </form>
+      <details class="code-login">
+        <summary>Signed up with Google? Use a sign-in code</summary>
+        <p class="muted small">Open the app → <b>Profile settings</b> → <b>Browser extension</b> → <b>Get sign-in code</b>, then paste it here.</p>
+        <form id="code-form" class="stack">
+          <input id="code" type="text" placeholder="Paste sign-in code" required />
+          <button type="submit" class="btn">Sign in with code</button>
+        </form>
+      </details>
+    </div>
+  </section>
+
+  <!-- Tracker -->
+  <section id="main-view" class="hidden">
+    <div class="card timer">
+      <input id="description" class="desc" placeholder="What are you working on?" autocomplete="off" />
+      <div class="row">
+        <select id="project" class="project"></select>
+        <button id="tags-btn" class="icon-btn" title="Tags"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></button>
+        <button id="billable" class="icon-btn" title="Billable">$</button>
+      </div>
+      <div id="tags-panel" class="tags-panel hidden"></div>
+      <div class="row timer-row">
+        <span id="clock" class="clock">0:00:00</span>
+        <button id="toggle" class="btn primary start">Start</button>
+      </div>
+      <div id="tag-names" class="tag-names"></div>
+    </div>
+
+    <div class="today">Today <b id="today-total">0:00:00</b></div>
+    <div class="card">
+      <div class="list-title">Recent activities</div>
+      <ul id="recent" class="recent"></ul>
+    </div>
+  </section>
+
+  <div id="loading" class="loading">Loading…</div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
