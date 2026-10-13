@@ -52,7 +52,8 @@ export default function Profile() {
     try {
       await api.put('/auth/password', { current: pw.current, next: pw.next });
       setPw({ current: '', next: '', confirm: '' });
-      toast('Password changed', 'success');
+      if (!user.hasPassword) setUser({ ...user, hasPassword: true });
+      toast(user.hasPassword ? 'Password changed' : 'Password set. You can now also log in with email and password.', 'success');
     } catch (err) {
       toast(err.message);
     }
@@ -134,13 +135,14 @@ export default function Profile() {
       </form>
 
       <form className="card pad-lg settings-form" onSubmit={savePassword}>
-        <h3 className="section-title first">Change password</h3>
-        <div className="grid-3">
-          <Field label="Current password"><input className="input" type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} required /></Field>
+        <h3 className="section-title first">{user.hasPassword ? 'Change password' : 'Set a password'}</h3>
+        {!user.hasPassword && <p className="setting-desc">You signed up with Google. Set a password if you also want to log in with your email, for example in the browser extension.</p>}
+        <div className={user.hasPassword ? 'grid-3' : 'grid-2'}>
+          {user.hasPassword && <Field label="Current password"><input className="input" type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} required /></Field>}
           <Field label="New password"><input className="input" type="password" autoComplete="new-password" minLength={8} value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} required /></Field>
           <Field label="Confirm new password"><input className="input" type="password" autoComplete="new-password" minLength={8} value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} required /></Field>
         </div>
-        <button type="submit" className="btn btn-primary">Change password</button>
+        <button type="submit" className="btn btn-primary">{user.hasPassword ? 'Change password' : 'Set password'}</button>
       </form>
     </div>
   );

@@ -6,7 +6,7 @@ Aplikasi web time tracking dengan tampilan dan alur kerja seperti Clockify. 100%
 
 | Area | Isi |
 |---|---|
-| **Login & role** | Login per user (email + password, opsional "Continue with Google"). Role **Admin** dan **Member**. |
+| **Login & role** | Login per user (email + password, opsional "Continue with Google"). Role **Admin** dan **Member**. Orang baru bisa **Sign up** sendiri (email/password atau Google); akun aktif setelah admin klik **Approve** di menu Team. Bisa dimatikan atau dibatasi ke domain email kantor di **Settings → Sign-up**. |
 | **Time Tracker** | Timer Start/Stop, mode manual, deskripsi dengan saran aktivitas terakhir, Project → Task, Tag, Billable ($). Daftar entri dikelompokkan per minggu/hari (aktivitas yang sama digabung dengan badge angka), bisa edit langsung (jam mulai/selesai, tanggal, durasi), Continue (▶), Duplicate, Delete. |
 | **Calendar** | Tampilan mingguan, drag untuk membuat entri, klik untuk mengedit. Event Google Calendar ditampilkan dan bisa dijadikan time entry dengan satu klik. Admin bisa melihat kalender anggota tim. |
 | **Dashboard** | Total waktu, top project/client, grafik, aktivitas terbanyak, aktivitas tim (admin). |

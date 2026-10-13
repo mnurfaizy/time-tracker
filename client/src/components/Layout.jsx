@@ -70,12 +70,22 @@ const NAV = [
 ];
 
 export function Layout() {
-  const { settings, isAdmin } = useData();
+  const { settings, isAdmin, users } = useData();
+  const pendingCount = isAdmin ? users.filter((u) => u.pending).length : 0;
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tt.sidebar') === 'collapsed');
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => setMobileOpen(false), [location.pathname]);
+
+  // Admins: refresh the team list so new sign-up requests show up without reloading.
+  const { reloadUsers } = useData();
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    reloadUsers().catch(() => {});
+    const t = setInterval(() => reloadUsers().catch(() => {}), 2 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [isAdmin, reloadUsers, location.pathname]);
 
   const toggleSidebar = () => {
     if (window.innerWidth < 900) {
@@ -112,6 +122,7 @@ export function Layout() {
             <NavLink key={n.to} to={n.to} className="sidebar-link" title={n.label}>
               <n.icon size={20} />
               <span>{n.label}</span>
+              {n.to === '/team' && pendingCount > 0 && <em className="nav-badge" title="Pending sign-up requests">{pendingCount}</em>}
             </NavLink>
           ),
         )}

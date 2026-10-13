@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS users (
   google_email TEXT COLLATE NOCASE,
   google_refresh_token TEXT,
   gcal_sync INTEGER NOT NULL DEFAULT 0,
+  pending INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 
@@ -122,6 +123,9 @@ CREATE TABLE IF NOT EXISTS oauth_states (
 export async function initDb() {
   if (!isRemote) await db.executeMultiple('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   await db.executeMultiple(SCHEMA);
+  // Migrations for databases created by older versions.
+  const userCols = (await db.execute('PRAGMA table_info(users)')).rows.map((c) => c.name);
+  if (!userCols.includes('pending')) await db.execute('ALTER TABLE users ADD COLUMN pending INTEGER NOT NULL DEFAULT 0');
 }
 
 // libSQL only binds null/number/string/bigint/buffer.
@@ -146,6 +150,8 @@ const DEFAULT_SETTINGS = {
   timeFormat: '24',
   membersCanCreate: '0',
   membersSeeTeamDashboard: '0',
+  allowSignup: '1',
+  signupDomain: '',
 };
 
 // Settings only change through setSettings in this process, so they are cached in memory.
@@ -163,6 +169,8 @@ export async function getSettings() {
     timeFormat: raw.timeFormat === '12' ? '12' : '24',
     membersCanCreate: raw.membersCanCreate === '1',
     membersSeeTeamDashboard: raw.membersSeeTeamDashboard === '1',
+    allowSignup: raw.allowSignup === '1',
+    signupDomain: raw.signupDomain || '',
   };
   return settingsCache;
 }

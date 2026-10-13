@@ -118,6 +118,8 @@ export function publicUser(u) {
     googleEmail: u.google_email || null,
     googleConnected: !!u.google_refresh_token,
     gcalSync: !!u.gcal_sync,
+    pending: !!u.pending,
+    hasPassword: !!u.password_hash,
     createdAt: u.created_at,
   };
 }

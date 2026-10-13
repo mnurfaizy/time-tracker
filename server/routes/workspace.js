@@ -26,6 +26,12 @@ r.put('/', requireAdmin, async (req, res) => {
   if ('timeFormat' in b) next.timeFormat = b.timeFormat === '12' ? '12' : '24';
   if ('membersCanCreate' in b) next.membersCanCreate = !!b.membersCanCreate;
   if ('membersSeeTeamDashboard' in b) next.membersSeeTeamDashboard = !!b.membersSeeTeamDashboard;
+  if ('allowSignup' in b) next.allowSignup = !!b.allowSignup;
+  if ('signupDomain' in b) {
+    const d = String(b.signupDomain ?? '').trim().toLowerCase().replace(/^@/, '');
+    if (d && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) throw bad('Enter a domain like yourcompany.com, or leave it empty');
+    next.signupDomain = d;
+  }
   await setSettings(next);
   res.json({ settings: await getSettings() });
 });

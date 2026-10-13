@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { api } from './api.js';
 import { DataProvider, useData } from './store.jsx';
 import { Layout } from './components/Layout.jsx';
-import { Login, Setup } from './pages/Auth.jsx';
+import { Login, Setup, Signup } from './pages/Auth.jsx';
 import Tracker from './pages/Tracker.jsx';
 import CalendarPage from './pages/Calendar.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -67,7 +67,10 @@ export default function App() {
         {boot.needsSetup ? (
           <Route path="*" element={<Setup onDone={() => { setBoot({ ...boot, needsSetup: false }); loadSession(); }} />} />
         ) : (
-          <Route path="*" element={<Login boot={boot} onDone={loadSession} />} />
+          <>
+            <Route path="/signup" element={<Signup boot={boot} />} />
+            <Route path="*" element={<Login boot={boot} onDone={loadSession} />} />
+          </>
         )}
       </Routes>
     );

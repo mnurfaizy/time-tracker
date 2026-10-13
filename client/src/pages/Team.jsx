@@ -18,8 +18,10 @@ export default function Team() {
   const [modal, setModal] = useState(null); // { mode: 'add' | 'edit' | 'password', user }
 
   const term = search.trim().toLowerCase();
+  const pending = users.filter((u) => u.pending);
   const list = users.filter(
     (u) =>
+      !u.pending &&
       (show === 'all' || (show === 'active') === u.active) &&
       (!term || u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term)),
   );
@@ -27,6 +29,26 @@ export default function Team() {
   const setActive = async (u, active) => {
     try {
       await api.put(`/users/${u.id}`, { active });
+      await reloadUsers();
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+
+  const approve = async (u, role) => {
+    try {
+      await api.post(`/users/${u.id}/approve`, { role });
+      await reloadUsers();
+      toast(`${u.name} can now log in`, 'success');
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+
+  const reject = async (u) => {
+    if (!window.confirm(`Reject the sign-up request from ${u.name} (${u.email})?`)) return;
+    try {
+      await api.del(`/users/${u.id}`);
       await reloadUsers();
     } catch (err) {
       toast(err.message);
@@ -50,6 +72,18 @@ export default function Team() {
           <input placeholder="Search by name or email" value={search} onChange={(e) => setSearch(e.target.value)} />
         </label>
       </div>
+      {pending.length > 0 && (
+        <div className="card pending-card">
+          <div className="card-caption">Pending sign-up requests ({pending.length})</div>
+          <table className="table">
+            <tbody>
+              {pending.map((u) => (
+                <PendingRow key={u.id} user={u} onApprove={approve} onReject={reject} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="card">
         <div className="card-caption">Members</div>
         <table className="table">
@@ -90,6 +124,25 @@ export default function Team() {
       </div>
       {modal && <MemberModal modal={modal} onClose={() => setModal(null)} onSaved={async () => { setModal(null); await reloadUsers(); }} />}
     </div>
+  );
+}
+
+function PendingRow({ user, onApprove, onReject }) {
+  const [role, setRole] = useState('member');
+  return (
+    <tr>
+      <td><span className="team-name"><Avatar name={user.name} size={28} /> {user.name}</span></td>
+      <td>{user.email}{user.googleEmail && <span className="muted small"> · via Google</span>}</td>
+      <td className="muted small">Requested {new Date(user.createdAt).toLocaleString()}</td>
+      <td className="pending-actions">
+        <select className="input select-sm" value={role} onChange={(e) => setRole(e.target.value)}>
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => onApprove(user, role)}>Approve</button>
+        <button type="button" className="btn-link danger" onClick={() => onReject(user)}>Reject</button>
+      </td>
+    </tr>
   );
 }
 

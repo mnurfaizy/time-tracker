@@ -544,3 +544,14 @@ td > .badge:first-child { margin-left: 0; }
 .import-actions { display: flex; align-items: center; gap: 12px; }
 
 .install-steps { margin: 16px 0 8px; padding-left: 20px; color: var(--text-2); line-height: 1.8; }
+
+.auth-switch { text-align: center; margin: 18px 0 0; color: var(--text-2); }
+.auth-notice { background: var(--primary-light); border: 1px solid #b3e5fc; color: #01579b; padding: 12px 14px; margin-bottom: 18px; line-height: 1.5; }
+
+.nav-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--danger); color: #fff; font: 500 11px/20px Roboto, sans-serif; text-align: center; }
+.sidebar-collapsed .nav-badge { position: absolute; left: 38px; margin-top: -18px; min-width: 16px; height: 16px; line-height: 16px; padding: 0 4px; }
+.sidebar-link { position: relative; }
+.pending-card { border-color: #ffb74d; }
+.pending-card .card-caption { background: #fff3e0; color: #e65100; border-bottom-color: #ffe0b2; }
+.pending-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.pending-actions .select-sm { min-width: 100px; }

@@ -2,7 +2,8 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { q } from '../db.js';
 import { requireAuth, currentUser, createSession, publicUser } from '../auth.js';
-import { HttpError, ms } from '../util.js';
+import { HttpError, ms, str } from '../util.js';
+import { assertSignupAllowed, createPendingUser } from '../lib/signup.js';
 import {
   googleConfigured, buildAuthUrl, exchangeCode, listEvents, revokeToken, cacheAccessToken, forgetUser, appUrl, CALENDAR_SCOPE,
 } from '../lib/google.js';
@@ -59,8 +60,19 @@ r.get('/callback', async (req, res) => {
 
   if (st.mode === 'login') {
     if (!email || tokens.claims.email_verified === false) return fail('google_email');
-    const user = await q.get('SELECT * FROM users WHERE (email = ? OR google_email = ?) AND active = 1', email, email);
-    if (!user) return fail('google_no_account');
+    const user = await q.get('SELECT * FROM users WHERE email = ? OR google_email = ? ORDER BY active DESC LIMIT 1', email, email);
+    if (user?.pending) return fail('pending');
+    if (user && !user.active) return fail('google_inactive');
+    if (!user) {
+      // Unknown Google account: request access (an admin must approve it).
+      try {
+        await assertSignupAllowed(email);
+      } catch {
+        return fail('google_no_account');
+      }
+      await createPendingUser({ name: str(tokens.claims.name, 100) || email.split('@')[0], email, googleEmail: email });
+      return fail('pending');
+    }
     await createSession(req, res, user.id);
     return res.redirect('/');
   }

@@ -76,6 +76,18 @@ export default function WorkspaceSettings() {
           <Toggle checked={form.membersSeeTeamDashboard} onChange={(v) => set('membersSeeTeamDashboard', v)} />
         </div>
 
+        <h3 className="section-title">Sign-up</h3>
+        <div className="setting-row">
+          <div>
+            <div className="setting-title">Allow people to sign up (admin approval required)</div>
+            <div className="setting-desc">Shows a Sign up link on the login page and lets new Google accounts request access. New accounts appear under <b>Team → Pending sign-up requests</b> and cannot log in until an admin approves them.</div>
+          </div>
+          <Toggle checked={form.allowSignup} onChange={(v) => set('allowSignup', v)} />
+        </div>
+        <Field label="Only allow emails from this domain (optional)" hint="For example rakamin.com. Leave empty to allow any email address.">
+          <input className="input" placeholder="yourcompany.com" value={form.signupDomain} onChange={(e) => set('signupDomain', e.target.value)} disabled={!form.allowSignup} />
+        </Field>
+
         <button type="submit" className="btn btn-primary" disabled={busy}>Save settings</button>
       </form>
       <ClockifyImport />

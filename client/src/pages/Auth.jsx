@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { Logo } from '../components/Layout.jsx';
 
 const GOOGLE_ERRORS = {
-  google_no_account: 'There is no active account for that Google email. Ask your workspace admin to add you first.',
+  google_no_account: 'This Google account cannot sign up here. Ask your workspace admin to add you.',
+  google_inactive: 'Your account has been deactivated. Please contact your workspace admin.',
   google_not_configured: 'Google sign-in is not configured on this server.',
   google_email: 'Your Google account email could not be verified.',
   google_state: 'The Google sign-in session expired. Please try again.',
@@ -29,6 +30,7 @@ export function Login({ boot, onDone }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(GOOGLE_ERRORS[params.get('error')] ?? '');
+  const pending = params.get('error') === 'pending';
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
@@ -51,6 +53,7 @@ export function Login({ boot, onDone }) {
       <div className="auth-card">
         <h1>Log in</h1>
         {boot.workspaceName && <p className="auth-sub">to <b>{boot.workspaceName}</b></p>}
+        {pending && <PendingNotice />}
         {boot.googleLogin && (
           <>
             <a className="btn btn-google" href="/api/google/login"><GoogleIcon /> Continue with Google</a>
@@ -63,8 +66,74 @@ export function Login({ boot, onDone }) {
           {error && <div className="form-error">{error}</div>}
           <button type="submit" className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
         </form>
+        {boot.allowSignup && (
+          <p className="auth-switch">Don't have an account? <Link to="/signup">Sign up</Link></p>
+        )}
         <p className="auth-foot">Forgot your password? Ask your workspace admin to reset it.</p>
         <p className="auth-foot"><a href="/privacy.html">Privacy Policy</a></p>
+      </div>
+    </div>
+  );
+}
+
+function PendingNotice() {
+  return (
+    <div className="auth-notice">
+      <b>Request sent.</b> A workspace admin needs to approve your account. You can log in as soon as it is approved.
+    </div>
+  );
+}
+
+export function Signup({ boot }) {
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api.post('/auth/signup', form);
+      setDone(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="auth-page">
+      <div className="auth-logo"><Logo /></div>
+      <div className="auth-card">
+        <h1>Sign up</h1>
+        {boot.workspaceName && <p className="auth-sub">to join <b>{boot.workspaceName}</b></p>}
+        {!boot.allowSignup ? (
+          <div className="auth-notice">Sign-up is closed. Ask your workspace admin to add you.</div>
+        ) : done ? (
+          <PendingNotice />
+        ) : (
+          <>
+            {boot.googleLogin && (
+              <>
+                <a className="btn btn-google" href="/api/google/login"><GoogleIcon /> Sign up with Google</a>
+                <div className="auth-divider"><span>OR</span></div>
+              </>
+            )}
+            <form onSubmit={submit}>
+              <input className="input" placeholder="Full name" autoComplete="name" value={form.name} onChange={set('name')} required autoFocus />
+              <input className="input" type="email" placeholder={boot.signupDomain ? `Work email (@${boot.signupDomain})` : 'Email'} autoComplete="email" value={form.email} onChange={set('email')} required />
+              <input className="input" type="password" placeholder="Password (min. 8 characters)" autoComplete="new-password" minLength={8} value={form.password} onChange={set('password')} required />
+              {error && <div className="form-error">{error}</div>}
+              <button type="submit" className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Sending…' : 'Sign up'}</button>
+            </form>
+            <p className="auth-foot">New accounts are activated after a workspace admin approves them.</p>
+          </>
+        )}
+        <p className="auth-switch">Already have an account? <Link to="/login">Log in</Link></p>
       </div>
     </div>
   );

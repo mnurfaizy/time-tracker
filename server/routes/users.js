@@ -47,9 +47,33 @@ r.put('/:id', requireAdmin, async (req, res) => {
     if (admins === 0) throw bad('The workspace needs at least one active admin');
   }
 
-  await q.run('UPDATE users SET name = ?, email = ?, role = ?, active = ? WHERE id = ?', name, mail, role, active, user.id);
+  // Activating an account also approves it if it was a pending sign-up.
+  await q.run(
+    'UPDATE users SET name = ?, email = ?, role = ?, active = ?, pending = CASE WHEN ? = 1 THEN 0 ELSE pending END WHERE id = ?',
+    name, mail, role, active, active, user.id,
+  );
   if (!active) await deleteUserSessions(user.id);
   res.json({ user: publicUser(await getUser(user.id)) });
+});
+
+// Approve a self sign-up request.
+r.post('/:id/approve', requireAdmin, async (req, res) => {
+  const user = await getUser(id(req.params.id));
+  if (!user.pending) throw bad('This account is not waiting for approval');
+  const role = req.body.role === 'admin' ? 'admin' : 'member';
+  await q.run('UPDATE users SET pending = 0, active = 1, role = ? WHERE id = ?', role, user.id);
+  res.json({ user: publicUser(await getUser(user.id)) });
+});
+
+// Reject a self sign-up request (only pending accounts can be removed).
+r.delete('/:id', requireAdmin, async (req, res) => {
+  const user = await getUser(id(req.params.id));
+  if (!user.pending) throw bad('Only pending sign-up requests can be rejected. Deactivate active members instead.');
+  await q.batch([
+    ['DELETE FROM sessions WHERE user_id = ?', user.id],
+    ['DELETE FROM users WHERE id = ? AND pending = 1', user.id],
+  ]);
+  res.json({ ok: true });
 });
 
 r.put('/:id/password', requireAdmin, async (req, res) => {

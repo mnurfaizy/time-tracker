@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { q, getSettings, setSettings } from '../db.js';
 import { createSession, createToken, destroySession, hashPassword, verifyPassword, requireAuth, publicUser } from '../auth.js';
 import { googleConfigured } from '../lib/google.js';
+import { assertSignupAllowed, createPendingUser, PENDING_MESSAGE } from '../lib/signup.js';
 import { HttpError, bad, reqStr, email, password, str } from '../util.js';
 
 const r = Router();
@@ -17,7 +18,14 @@ function rateLimit(req) {
 const userCount = async () => (await q.get('SELECT COUNT(*) AS n FROM users')).n;
 
 r.get('/state', async (req, res) => {
-  res.json({ needsSetup: (await userCount()) === 0, googleLogin: googleConfigured(), workspaceName: (await getSettings()).workspaceName });
+  const settings = await getSettings();
+  res.json({
+    needsSetup: (await userCount()) === 0,
+    googleLogin: googleConfigured(),
+    workspaceName: settings.workspaceName,
+    allowSignup: settings.allowSignup,
+    signupDomain: settings.signupDomain,
+  });
 });
 
 r.post('/setup', async (req, res) => {
@@ -44,6 +52,7 @@ r.post('/login', async (req, res) => {
   if (!user || !verifyPassword(String(req.body.password ?? ''), user.password_hash)) {
     throw new HttpError(401, 'Invalid email or password');
   }
+  if (user.pending) throw new HttpError(403, PENDING_MESSAGE);
   if (!user.active) throw new HttpError(403, 'Your account has been deactivated. Please contact your workspace admin.');
   attempts.delete(req.ip);
   await createSession(req, res, user.id);
@@ -58,6 +67,7 @@ r.post('/token', async (req, res) => {
   if (!user || !verifyPassword(String(req.body.password ?? ''), user.password_hash)) {
     throw new HttpError(401, 'Invalid email or password');
   }
+  if (user.pending) throw new HttpError(403, PENDING_MESSAGE);
   if (!user.active) throw new HttpError(403, 'Your account has been deactivated. Please contact your workspace admin.');
   attempts.delete(req.ip);
   res.json({ token: await createToken(user.id), user: publicUser(user) });
@@ -66,6 +76,20 @@ r.post('/token', async (req, res) => {
 // One-time sign-in code for the browser extension, for people who log in with Google.
 r.post('/extension-code', requireAuth, async (req, res) => {
   res.json({ code: await createToken(req.user.id) });
+});
+
+// Self sign-up: the account stays pending until an admin approves it.
+r.post('/signup', async (req, res) => {
+  rateLimit(req);
+  const name = reqStr(req.body.name, 'Name', 100);
+  const mail = email(req.body.email);
+  const pw = password(req.body.password);
+  await assertSignupAllowed(mail);
+  const existing = await q.get('SELECT pending FROM users WHERE email = ?', mail);
+  if (existing?.pending) throw new HttpError(409, PENDING_MESSAGE);
+  if (existing) throw new HttpError(409, 'An account with this email already exists. Please log in.');
+  await createPendingUser({ name, email: mail, passwordHash: hashPassword(pw) });
+  res.json({ pending: true });
 });
 
 r.post('/logout', async (req, res) => {
