@@ -64,6 +64,7 @@ export function Login({ boot, onDone }) {
           <button type="submit" className="btn btn-primary btn-block" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
         </form>
         <p className="auth-foot">Forgot your password? Ask your workspace admin to reset it.</p>
+        <p className="auth-foot"><a href="/privacy.html">Privacy Policy</a></p>
       </div>
     </div>
   );
