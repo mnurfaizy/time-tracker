@@ -7,6 +7,7 @@ import { q } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { HttpError, bad } from '../util.js';
 import { listProjects } from './projects.js';
+import { normalize, levenshtein } from '../../extension/matcher.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -14,6 +15,9 @@ r.use(requireAuth);
 const GROQ_URL = process.env.GROQ_API_URL || 'https://api.groq.com/openai/v1/audio/transcriptions';
 // Full large-v3: noticeably more accurate for Indonesian than the faster "turbo" variant.
 const MODEL = process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3';
+// Text model that tidies the raw transcript (misheard words like "menecek" -> "mengecek").
+const TEXT_MODEL = process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b';
+const CHAT_URL = process.env.GROQ_CHAT_URL || 'https://api.groq.com/openai/v1/chat/completions';
 export const transcribeConfigured = () => !!process.env.GROQ_API_KEY;
 
 const EXT = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/x-wav': 'wav' };
@@ -60,6 +64,7 @@ async function vocabulary(user) {
   descriptions.forEach((d) => add(d.description));
   for (const p of projects) {
     add(p.name);
+    if (p.clientName) add(p.clientName);
     p.tasks?.filter((t) => !t.done).forEach((t) => add(t.name));
   }
   return terms;
@@ -141,8 +146,81 @@ r.post('/', express.raw({ type: () => true, limit: '6mb' }), async (req, res) =>
   const data = await resp.json();
   let text = String(data.text ?? '').trim();
   if (HALLUCINATION.test(text) || text === buildPrompt([], lang).trim()) text = '';
+  if (text) text = await tidyTranscript(text, terms, lang);
   text = snapAcronyms(text, terms);
   res.json({ text });
 });
 
 export default r;
+
+const TIDY_INSTRUCTIONS = `You fix speech-to-text output of a short spoken work note for a time tracker.
+The speaker mixes casual Indonesian with English work terms.
+- Fix words that were misheard into the real, natural word the speaker most likely said
+  (e.g. "menecek" -> "mengecek", "meriview" -> "me-review", "action best" -> "Daily Exam" when that is in the vocabulary).
+- Use everyday Indonesian spelling; keep English terms in English. Do not formalize casual wording.
+- Names of projects, clients, tasks and acronyms must be spelled exactly as in the vocabulary when the speaker clearly meant them.
+- Never add, remove, reorder or translate content. Never answer or comment.
+Reply with the corrected sentence only.`;
+
+/** Second pass with a text model; falls back to the raw transcript on any problem. */
+async function tidyTranscript(text, terms, lang) {
+  try {
+    const resp = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        temperature: 0,
+        reasoning_effort: 'low',
+        max_completion_tokens: 600,
+        messages: [
+          { role: 'system', content: TIDY_INSTRUCTIONS },
+          {
+            role: 'user',
+            content: [
+              `Language: ${lang === 'en' ? 'English' : 'Indonesian (with English terms)'}`,
+              `Vocabulary: ${relevantTerms(text, terms).join('; ') || '(none)'}`,
+              '',
+              `Transcript: ${text}`,
+            ].join('\n'),
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) {
+      console.warn('Transcript tidy-up failed', resp.status, (await resp.text().catch(() => '')).slice(0, 200));
+      return text;
+    }
+    const data = await resp.json();
+    const out = String(data.choices?.[0]?.message?.content ?? '').trim().replace(/^["'“]|["'”]$/g, '').trim();
+    // Guard against the model rewriting or answering instead of correcting.
+    if (!out || out.includes('\n') || out.length > text.length * 1.5 + 20 || out.length < text.length * 0.5) return text;
+    return out;
+  } catch (err) {
+    console.warn('Transcript tidy-up failed:', err.message);
+    return text;
+  }
+}
+
+/**
+ * The vocabulary entries that look like something in the transcript (fuzzy, also across a word the
+ * recognizer split in two: "arut min" ~ "Arutmin"). Keeps the tidy-up request small and focused.
+ */
+function relevantTerms(text, terms, limit = 40) {
+  const words = normalize(text).split(' ').filter(Boolean);
+  const probes = [...words, ...words.slice(1).map((w, i) => words[i] + w)];
+  const similar = (a, b) => {
+    if (a === b) return true;
+    if (a.length < 3 || b.length < 3) return false;
+    if (a.startsWith(b) || b.startsWith(a)) return Math.min(a.length, b.length) >= 4;
+    return 1 - levenshtein(a, b) / Math.max(a.length, b.length) >= 0.6;
+  };
+  const scored = [];
+  for (const term of terms) {
+    const termWords = normalize(term).split(' ').filter((w) => w.length >= 2);
+    const hits = termWords.filter((tw) => probes.some((p) => similar(p, tw))).length;
+    if (hits) scored.push({ term, hits });
+  }
+  return scored.sort((a, b) => b.hits - a.hits).slice(0, limit).map((s) => s.term);
+}

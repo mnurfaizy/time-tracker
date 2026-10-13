@@ -30,7 +30,15 @@ export const normalize = (s) =>
 
 export const tokens = (s) => normalize(s).split(' ').filter((t) => t && !STOP.has(t));
 
-function levenshtein(a, b) {
+// Legal-form and filler words in company names: people say "Arutmin", not "PT Arutmin Indonesia".
+const CLIENT_GENERIC = new Set(['pt', 'tbk', 'persero', 'perseroan', 'cv', 'ltd', 'inc', 'corp', 'co', 'company', 'group', 'grup', 'indonesia', 'id', 'holding', 'holdings', 'tb']);
+const clientTokens = (s) => {
+  const all = tokens(s);
+  const core = all.filter((t) => !CLIENT_GENERIC.has(t));
+  return core.length ? core : all;
+};
+
+export function levenshtein(a, b) {
   if (a === b) return 0;
   const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {
@@ -121,6 +129,8 @@ export function interpret(transcript, { projects, recent = [] }) {
   const queryText = projectPhrase ?? transcript;
   const q = tokens(queryText);
   const scores = new Map(); // projectId -> candidate
+  const perClient = new Map(); // live projects per client: a client with one project identifies it
+  for (const p of live) if (p.clientName) perClient.set(p.clientName, (perClient.get(p.clientName) || 0) + 1);
 
   const offer = (project, task, score, reason) => {
     const prev = scores.get(project.id);
@@ -129,10 +139,13 @@ export function interpret(transcript, { projects, recent = [] }) {
 
   for (const p of live) {
     const nameTokens = tokens(p.name);
-    const clientTokens = tokens(p.clientName);
+    const cTokens = clientTokens(p.clientName);
     if (!nameTokens.length) continue;
     const byName = overlap(q, nameTokens);
-    const withClient = clientTokens.length ? overlap(q, [...nameTokens, ...clientTokens]) : byName;
+    const withClient = cTokens.length ? overlap(q, [...nameTokens, ...cTokens]) : byName;
+    // The client was named ("... Arutmin ..."): a strong pointer, decisive when it has a single project.
+    const clientSaid = cTokens.length > 0 && overlap(q, cTokens).recall >= 0.85;
+    const onlyProject = clientSaid && perClient.get(p.clientName) === 1;
     let score;
     if (projectPhrase) {
       // The user named the project explicitly: both sides should match.
@@ -140,7 +153,11 @@ export function interpret(transcript, { projects, recent = [] }) {
     } else {
       // Free sentence: the project's name should be (mostly) contained in what was said.
       score = byName.recall * (0.85 + 0.15 * Math.min(1, nameTokens.length / 3));
-      if (clientTokens.length) score = Math.max(score, overlap(q, clientTokens).recall * 0.55);
+    }
+    if (clientSaid) {
+      // Close part of the gap to 1, so differences between the client's projects (batch numbers) survive.
+      if (byName.recall >= 0.3) score += 0.4 * (1 - score);
+      else score = Math.max(score, onlyProject ? 0.8 : 0.5);
     }
     // Pick a task when its name was said as well.
     let task = null;
@@ -173,11 +190,11 @@ export function interpret(transcript, { projects, recent = [] }) {
   const candidates = [...scores.values()].sort((a, b) => b.score - a.score).slice(0, 4);
   const [best, second] = candidates;
   const margin = best ? best.score - (second?.score ?? 0) : 0;
-  const confident = !!best && best.score >= 0.75 && (margin >= 0.15 || best.score >= 0.95);
+  const confident = !!best && best.score >= 0.75 && (margin >= 0.15 || (best.score >= 0.95 && margin >= 0.05));
 
   let description;
   if (projectPhrase != null) description = tidyDescription(activity);
-  else if (best) description = tidyDescription(stripProjectWords(transcript, [...tokens(best.project.name), ...tokens(best.project.clientName)]));
+  else if (best) description = tidyDescription(stripProjectWords(transcript, [...tokens(best.project.name), ...clientTokens(best.project.clientName)]));
   else description = tidyDescription(transcript);
   if (!description) description = tidyDescription(activity || transcript);
 

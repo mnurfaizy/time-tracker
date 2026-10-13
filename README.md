@@ -142,6 +142,7 @@ Kode sumber ekstensi ada di folder `extension/`. Ikon dibuat ulang dengan `node 
 Ada dua mesin:
 
 - **Groq Whisper (disarankan)**: jalan di semua browser (Chrome, Edge, Brave, Firefox, Opera, ...) dan jauh lebih akurat, karena diberi "kosakata" berupa deskripsi aktivitas terbaru, nama project, dan nama task milik user. Audio direkam di browser, dikirim ke server ini, lalu ditranskripsi Groq. Audio tidak disimpan. Gratis, tanpa kartu kredit (batas free tier jauh di atas kebutuhan ~20 user).
+  Setelah ditranskripsi, teksnya dirapikan satu kali oleh model teks Groq (`openai/gpt-oss-120b`, key yang sama): kata salah dengar dibetulkan (mis. "menecek" → "mengecek"), dan nama project/klien/task disesuaikan dengan ejaan di aplikasi. Bila langkah ini gagal, teks asli Whisper yang dipakai.
 - **Mesin bawaan browser**: dipakai otomatis bila `GROQ_API_KEY` belum diisi. Hanya jalan di Google Chrome dan Microsoft Edge, dan akurasinya lebih rendah.
 
 Cara mengaktifkan Groq:
