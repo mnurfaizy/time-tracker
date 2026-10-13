@@ -45,6 +45,27 @@ export function DataProvider({ session, setSession, children }) {
       .finally(() => setReady(true));
   }, [reloadProjects, reloadClients, reloadTags, reloadUsers, toast]);
 
+  // Keep shared lists fresh when teammates change them: refresh when the tab regains focus
+  // (at most every 30 s) and every 3 minutes while the tab is visible.
+  useEffect(() => {
+    let last = Date.now();
+    const refresh = (force = false) => {
+      if (document.visibilityState !== 'visible') return;
+      if (!force && Date.now() - last < 30 * 1000) return;
+      last = Date.now();
+      Promise.all([reloadProjects(), reloadClients(), reloadTags()]).catch(() => {});
+    };
+    const onFocus = () => refresh();
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    const t = setInterval(() => refresh(true), 3 * 60 * 1000);
+    return () => {
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+      clearInterval(t);
+    };
+  }, [reloadProjects, reloadClients, reloadTags]);
+
   const value = useMemo(() => {
     const { user, settings } = session;
     const isAdmin = user.role === 'admin';
