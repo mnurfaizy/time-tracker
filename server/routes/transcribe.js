@@ -1,6 +1,6 @@
-// Speech-to-text for browsers without a working built-in recognizer (Brave, Firefox, Opera, ...).
-// The browser records a short clip and posts it here; we forward it to Groq's hosted Whisper
-// (free tier, no credit card) and return the text. Audio is never stored.
+// Speech-to-text for dictation. The browser records a short clip and posts it here; we forward it to
+// Groq's hosted Whisper (free tier, no credit card), primed with the user's own vocabulary, and return
+// the text. Audio is never stored.
 import { Router } from 'express';
 import express from 'express';
 import { q } from '../db.js';
@@ -12,7 +12,8 @@ const r = Router();
 r.use(requireAuth);
 
 const GROQ_URL = process.env.GROQ_API_URL || 'https://api.groq.com/openai/v1/audio/transcriptions';
-const MODEL = process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo';
+// Full large-v3: noticeably more accurate for Indonesian than the faster "turbo" variant.
+const MODEL = process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3';
 export const transcribeConfigured = () => !!process.env.GROQ_API_KEY;
 
 const EXT = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/x-wav': 'wav' };
@@ -61,12 +62,43 @@ async function vocabulary(user) {
     add(p.name);
     p.tasks?.filter((t) => !t.done).forEach((t) => add(t.name));
   }
-  let prompt = '';
+  return terms;
+}
+
+// Whisper treats the prompt as the text that came before, and copies its style. A mixed
+// Indonesian/English work note keeps English terms and acronyms as they are instead of
+// respelling them the Indonesian way.
+const PROMPT_INTRO = {
+  id: 'Catatan kerja harian, campuran Bahasa Indonesia dan English, dengan singkatan seperti SDP, PIC, QA, PPT. ',
+  en: 'Daily work log with project names and acronyms such as SDP, PIC, QA, PPT. ',
+};
+
+function buildPrompt(terms, lang) {
+  let prompt = PROMPT_INTRO[lang] + 'Project & aktivitas: ';
+  let first = true;
   for (const t of terms) {
-    if (prompt.length + t.length > 700) break;
-    prompt += (prompt ? ', ' : '') + t;
+    if (prompt.length + t.length > 750) break;
+    prompt += (first ? '' : ', ') + t;
+    first = false;
   }
-  return prompt;
+  return prompt + '.';
+}
+
+const ACRONYM = /^[A-Z][A-Z0-9]{1,5}$/;
+
+/**
+ * Speech recognition often gets single letters of an acronym wrong (SDP -> SGP). When a spoken acronym
+ * differs by one letter from exactly one acronym the user actually uses, take the user's one.
+ */
+export function snapAcronyms(text, terms) {
+  const known = new Set();
+  for (const t of terms) for (const w of String(t).split(/[^A-Za-z0-9]+/)) if (ACRONYM.test(w)) known.add(w);
+  if (!known.size) return text;
+  return text.replace(/\b[A-Za-z][A-Za-z0-9]*\b/g, (word) => {
+    if (!ACRONYM.test(word) || known.has(word)) return word;
+    const close = [...known].filter((k) => k.length === word.length && [...k].filter((c, i) => c !== word[i]).length === 1);
+    return close.length === 1 ? close[0] : word;
+  });
 }
 
 r.get('/status', (req, res) => res.json({ configured: transcribeConfigured() }));
@@ -85,8 +117,8 @@ r.post('/', express.raw({ type: () => true, limit: '6mb' }), async (req, res) =>
   form.append('language', lang);
   form.append('response_format', 'json');
   form.append('temperature', '0');
-  const prompt = await vocabulary(req.user).catch(() => '');
-  if (prompt) form.append('prompt', prompt);
+  const terms = await vocabulary(req.user).catch(() => []);
+  form.append('prompt', buildPrompt(terms, lang));
 
   let resp;
   try {
@@ -108,7 +140,8 @@ r.post('/', express.raw({ type: () => true, limit: '6mb' }), async (req, res) =>
   }
   const data = await resp.json();
   let text = String(data.text ?? '').trim();
-  if (HALLUCINATION.test(text)) text = '';
+  if (HALLUCINATION.test(text) || text === buildPrompt([], lang).trim()) text = '';
+  text = snapAcronyms(text, terms);
   res.json({ text });
 });
 

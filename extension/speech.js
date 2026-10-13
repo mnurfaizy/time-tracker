@@ -92,7 +92,10 @@ function listenCloud({ lang, transcribe, onPhase }) {
   const result = (async () => {
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      stream = await navigator.mediaDevices.getUserMedia({
+        // Browser noise suppression can swallow consonants (D/G/B); Whisper copes with noise by itself.
+        audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true, channelCount: 1 },
+      });
     } catch (err) {
       if (err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError') return { error: 'no-mic' };
       return { error: 'not-allowed' };
@@ -102,7 +105,7 @@ function listenCloud({ lang, transcribe, onPhase }) {
       return { error: 'aborted' };
     }
     const mimeType = MIME_TYPES.find((t) => MediaRecorder.isTypeSupported?.(t));
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 96000 });
     const chunks = [];
     recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
 
