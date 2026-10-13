@@ -533,3 +533,12 @@ td > .badge:first-child { margin-left: 0; }
   .table th, .table td { padding: 10px 12px; }
   .detailed-table th:nth-child(3), .detailed-table td:nth-child(3) { display: none; }
 }
+
+/* ---------- Clockify import ---------- */
+.import-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.import-preview { border: 1px solid var(--border-light); background: #fafcfd; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.import-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.import-stats b { font-size: 20px; font-weight: 500; margin-right: 4px; }
+.import-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--border-light); background: #fff; }
+.import-list .table td, .import-list .table th { padding: 8px 14px; }
+.import-actions { display: flex; align-items: center; gap: 12px; }

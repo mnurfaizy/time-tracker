@@ -14,6 +14,7 @@ import projectRoutes from './routes/projects.js';
 import tagRoutes from './routes/tags.js';
 import entryRoutes from './routes/entries.js';
 import reportRoutes from './routes/reports.js';
+import importRoutes from './routes/import.js';
 import googleRoutes from './routes/google.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,7 +33,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/api', express.json({ limit: '1mb' }));
+app.use('/api', express.json({ limit: '10mb' }));
 app.use('/api', (req, res, next) => {
   req.body ??= {};
   next();
@@ -57,6 +58,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/entries', entryRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/import', importRoutes);
 app.use('/api/google', googleRoutes);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

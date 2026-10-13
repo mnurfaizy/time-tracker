@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api.js';
 import { useData } from '../store.jsx';
 import { Field, Toggle } from '../components/ui.jsx';
+import { ClockifyImport } from '../components/ClockifyImport.jsx';
 
 export default function WorkspaceSettings() {
   const { settings, setSettings, toast } = useData();
@@ -77,6 +78,7 @@ export default function WorkspaceSettings() {
 
         <button type="submit" className="btn btn-primary" disabled={busy}>Save settings</button>
       </form>
+      <ClockifyImport />
     </div>
   );
 }
