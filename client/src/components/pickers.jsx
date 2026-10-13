@@ -5,6 +5,8 @@ import { useData } from '../store.jsx';
 import { api } from '../api.js';
 
 const norm = (s) => String(s ?? '').toLowerCase();
+// Matches the start of any word, so 'bsi' finds 'BSI - ...' but not 'Website'.
+const wordMatch = (text, term) => !term || norm(text).startsWith(term) || norm(text).split(/[^a-z0-9]+/).some((w) => w.startsWith(term));
 
 /** Project label: "● Project: Task - Client" */
 export function ProjectLabel({ project, task, clientName, fallback }) {
@@ -38,18 +40,18 @@ export function ProjectPicker({ projectId, taskId, onChange, fallback, emptyLabe
   const hasValue = !!(project || (projectId && fallback?.projectName));
 
   const groups = useMemo(() => {
-    const term = norm(search);
+    const term = norm(search).trim();
     const byClient = new Map();
     for (const p of projects) {
       if (p.archived) continue;
       const clientName = p.clientId ? clientById.get(p.clientId)?.name ?? p.clientName : null;
       const activeTasks = p.tasks.filter((t) => !t.done);
-      const matchingTasks = term ? activeTasks.filter((t) => norm(t.name).includes(term)) : activeTasks;
-      const matches = !term || norm(p.name).includes(term) || norm(clientName).includes(term) || matchingTasks.length;
+      const matchingTasks = term ? activeTasks.filter((t) => wordMatch(t.name, term)) : activeTasks;
+      const matches = !term || wordMatch(p.name, term) || wordMatch(clientName, term) || matchingTasks.length;
       if (!matches) continue;
       const key = clientName ?? '';
       if (!byClient.has(key)) byClient.set(key, []);
-      byClient.get(key).push({ project: p, tasks: term && !norm(p.name).includes(term) ? matchingTasks : activeTasks, forceOpen: !!term && matchingTasks.length > 0 });
+      byClient.get(key).push({ project: p, tasks: term && !wordMatch(p.name, term) ? matchingTasks : activeTasks, forceOpen: !!term && matchingTasks.length > 0 });
     }
     return [...byClient.entries()].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
   }, [projects, clientById, search]);

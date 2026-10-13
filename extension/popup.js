@@ -17,6 +17,7 @@ const state = {
   running: null,
   draft: emptyDraft(),
   recent: [],
+  recentAll: [],
   todayDone: 0,
   tagsOpen: false,
 };
@@ -89,28 +90,150 @@ $('open-app').addEventListener('click', () => chrome.tabs.create({ url: `${SERVE
 
 // ---------------------------------------------------------------- Tracker
 
-function renderProjects() {
-  const sel = $('project');
-  sel.textContent = '';
-  sel.append(new Option('No project', ''));
+// ---------------------------------------------------------------- Project picker
+
+const picker = { open: false, items: [], active: 0 };
+const norm = (s) => String(s ?? '').toLowerCase();
+// Matches the start of any word, so 'bsi' finds 'BSI - ...' but not 'Website'.
+const wordMatch = (text, term) => !term || norm(text).split(/[^a-z0-9]+/).some((w) => w.startsWith(term)) || norm(text).startsWith(term);
+
+/** Builds the visible option list: recent projects first, then all projects grouped by client. */
+function pickerItems(term) {
+  const t = norm(term).trim();
+  const live = state.projects.filter((p) => !p.archived);
+  const items = [];
+  const option = (p, task, extra = {}) => ({ type: 'option', projectId: p?.id ?? null, taskId: task?.id ?? null, project: p, task, ...extra });
+  if (!t) {
+    items.push(option(null, null));
+    const seen = new Set();
+    const recent = [];
+    for (const e of state.recentAll) {
+      const key = e.projectId + '|' + e.taskId;
+      const p = live.find((x) => x.id === e.projectId);
+      if (!p || seen.has(key)) continue;
+      seen.add(key);
+      recent.push(option(p, e.taskId ? p.tasks.find((x) => x.id === e.taskId) : null));
+      if (recent.length === 5) break;
+    }
+    if (recent.length) items.push({ type: 'group', label: 'Recent' }, ...recent);
+  }
   const byClient = new Map();
-  for (const p of state.projects) {
-    if (p.archived) continue;
+  for (const p of live) {
+    const clientHit = wordMatch(p.clientName, t);
+    const projectHit = wordMatch(p.name, t);
+    const tasks = p.tasks.filter((x) => !x.done && (!t || clientHit || projectHit || wordMatch(x.name, t)));
+    if (t && !clientHit && !projectHit && !tasks.length) continue;
     const key = p.clientName || '';
     if (!byClient.has(key)) byClient.set(key, []);
-    byClient.get(key).push(p);
+    byClient.get(key).push({ p, tasks: t ? tasks : [] });
   }
-  const groups = [...byClient.entries()].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
-  for (const [client, projects] of groups) {
-    const group = document.createElement('optgroup');
-    group.label = client || 'No client';
-    for (const p of projects) {
-      group.append(new Option(p.name, `p:${p.id}`));
-      for (const t of p.tasks.filter((x) => !x.done)) group.append(new Option(`   ${p.name}: ${t.name}`, `t:${p.id}:${t.id}`));
+  const groups = [...byClient.entries()].sort(([x], [y]) => (x === '' ? -1 : y === '' ? 1 : x.localeCompare(y)));
+  for (const [client, list] of groups) {
+    items.push({ type: 'group', label: client || 'No client' });
+    for (const { p, tasks } of list) {
+      items.push(option(p, null, { taskCount: p.tasks.filter((x) => !x.done).length }));
+      for (const task of tasks) items.push(option(p, task, { isTask: true }));
     }
-    sel.append(group);
+  }
+  return items;
+}
+
+function renderPicker() {
+  const list = $('project-list');
+  list.textContent = '';
+  picker.items = pickerItems($('project-search').value);
+  const options = picker.items.filter((i) => i.type === 'option');
+  picker.active = Math.min(picker.active, Math.max(0, options.length - 1));
+  if (!options.length) {
+    list.append(Object.assign(document.createElement('div'), { className: 'picker-empty', textContent: 'No matching projects' }));
+    return;
+  }
+  let index = 0;
+  const c = current();
+  for (const item of picker.items) {
+    if (item.type === 'group') {
+      list.append(Object.assign(document.createElement('div'), { className: 'picker-group', textContent: item.label }));
+      continue;
+    }
+    const i = index++;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'picker-item' + (item.isTask ? ' task' : '') + (i === picker.active ? ' active' : '');
+    row.setAttribute('role', 'option');
+    const selected = item.projectId === (c.projectId ?? null) && (item.taskId ?? null) === (c.taskId ?? null);
+    row.setAttribute('aria-selected', String(selected));
+    if (!item.project) {
+      row.append(Object.assign(document.createElement('span'), { className: 'picker-name muted', textContent: 'No project' }));
+    } else {
+      const dot = Object.assign(document.createElement('span'), { className: 'dot' });
+      dot.style.background = item.project.color;
+      const name = item.isTask ? item.task.name : item.task ? item.project.name + ': ' + item.task.name : item.project.name;
+      row.append(dot, Object.assign(document.createElement('span'), { className: 'picker-name', textContent: name }));
+      if (item.taskCount) row.append(Object.assign(document.createElement('span'), { className: 'picker-meta', textContent: item.taskCount + (item.taskCount > 1 ? ' tasks' : ' task') }));
+    }
+    if (selected) row.append(Object.assign(document.createElement('span'), { className: 'picker-check', textContent: '✓' }));
+    row.addEventListener('mousedown', (ev) => ev.preventDefault());
+    row.addEventListener('click', () => chooseProject(item));
+    row.addEventListener('mousemove', () => {
+      if (picker.active !== i) {
+        picker.active = i;
+        list.querySelectorAll('.picker-item').forEach((el, n) => el.classList.toggle('active', n === i));
+      }
+    });
+    list.append(row);
+  }
+  list.querySelector('.picker-item.active')?.scrollIntoView({ block: 'nearest' });
+}
+
+function openPicker(open) {
+  picker.open = open;
+  $('project-panel').classList.toggle('hidden', !open);
+  $('project').setAttribute('aria-expanded', String(open));
+  if (open) {
+    state.tagsOpen = false;
+    renderTags();
+    $('project-search').value = '';
+    picker.active = 0;
+    renderPicker();
+    $('project-search').focus();
   }
 }
+
+function chooseProject(item) {
+  openPicker(false);
+  const projectId = item.projectId;
+  const patch = { projectId, taskId: item.taskId };
+  if (item.project && projectId !== current().projectId) patch.billable = item.project.billable;
+  // Description typed + project chosen while idle: start right away.
+  const typed = $('description').value.trim();
+  if (!state.running && projectId && typed) start({ ...state.draft, description: typed, ...patch });
+  else setFields(patch);
+}
+
+$('project').addEventListener('click', () => openPicker(!picker.open));
+$('project-search').addEventListener('input', () => {
+  picker.active = 0;
+  renderPicker();
+});
+$('project-search').addEventListener('keydown', (e) => {
+  const options = picker.items.filter((i) => i.type === 'option');
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const n = Math.max(1, options.length);
+    picker.active = (picker.active + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
+    renderPicker();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (options[picker.active]) chooseProject(options[picker.active]);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    openPicker(false);
+    $('project').focus();
+  }
+});
+document.addEventListener('mousedown', (e) => {
+  if (picker.open && !$('project-panel').contains(e.target) && !$('project').contains(e.target)) openPicker(false);
+});
 
 function renderTags() {
   const panel = $('tags-panel');
@@ -137,10 +260,14 @@ function renderTimer() {
   const c = current();
   const desc = $('description');
   if (document.activeElement !== desc) desc.value = c.description || '';
-  const sel = $('project');
-  sel.value = c.taskId ? `t:${c.projectId}:${c.taskId}` : c.projectId ? `p:${c.projectId}` : '';
-  if (sel.value === '' && c.projectId) sel.value = `p:${c.projectId}`;
-  sel.classList.toggle('has-value', !!c.projectId);
+  const p = c.projectId ? state.projects.find((x) => x.id === c.projectId) : null;
+  const task = p && c.taskId ? p.tasks.find((x) => x.id === c.taskId) : null;
+  const projectName = p?.name ?? (c.projectId ? state.running?.projectName : null);
+  $('project-label').textContent = projectName ? (task ? projectName + ': ' + task.name : projectName) : 'Project';
+  $('project-dot').classList.toggle('hidden', !projectName);
+  $('project-dot').style.background = p?.color ?? state.running?.projectColor ?? '';
+  $('project').classList.toggle('has-value', !!projectName);
+  $('project').title = projectName ? projectName + (p?.clientName ? ' · ' + p.clientName : '') : 'Choose a project';
   $('billable').classList.toggle('on', !!c.billable);
   $('tags-btn').classList.toggle('on', c.tagIds.length > 0);
   const names = c.tagIds.map((tagId) => state.tags.find((t) => t.id === tagId)?.name).filter(Boolean);
@@ -255,26 +382,17 @@ $('description').addEventListener('blur', (e) => {
   if (e.target.value !== (current().description || '')) setFields({ description: e.target.value });
 });
 
-$('project').addEventListener('change', (e) => {
-  const [kind, pid, tid] = e.target.value.split(':');
-  const projectId = kind ? Number(pid) : null;
-  const project = state.projects.find((p) => p.id === projectId);
-  const patch = { projectId, taskId: kind === 't' ? Number(tid) : null };
-  if (project && projectId !== current().projectId) patch.billable = project.billable;
-  // Description typed + project chosen while idle: start right away.
-  const typed = $('description').value.trim();
-  if (!state.running && projectId && typed) start({ ...state.draft, description: typed, ...patch });
-  else setFields(patch);
-});
 
 $('billable').addEventListener('click', () => setFields({ billable: !current().billable }));
 $('tags-btn').addEventListener('click', () => {
+  if (picker.open) openPicker(false);
   state.tagsOpen = !state.tagsOpen;
   renderTags();
 });
 
 async function loadRecent() {
   const { entries } = await api('GET', '/entries?limit=60');
+  state.recentAll = entries;
   const todayStart = new Date().setHours(0, 0, 0, 0);
   state.todayDone = entries.filter((e) => e.start >= todayStart).reduce((s, e) => s + (e.end - e.start), 0);
   const seen = new Set();
@@ -296,7 +414,6 @@ async function loadMain() {
   state.projects = projects;
   state.tags = tags;
   state.running = entry;
-  renderProjects();
   await loadRecent();
   renderTimer();
   await updateBadge(entry);
