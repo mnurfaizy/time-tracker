@@ -67,6 +67,13 @@ export default function WorkspaceSettings() {
           </div>
           <Toggle checked={form.membersCanCreate} onChange={(v) => set('membersCanCreate', v)} />
         </div>
+        <div className="setting-row">
+          <div>
+            <div className="setting-title">Members can see the team Dashboard</div>
+            <div className="setting-desc">Shows the Only me / Team switch and Team activities on the Dashboard for everyone. Reports and editing other people's time stay admin-only.</div>
+          </div>
+          <Toggle checked={form.membersSeeTeamDashboard} onChange={(v) => set('membersSeeTeamDashboard', v)} />
+        </div>
 
         <button type="submit" className="btn btn-primary" disabled={busy}>Save settings</button>
       </form>

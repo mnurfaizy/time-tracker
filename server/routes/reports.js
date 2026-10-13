@@ -26,13 +26,17 @@ function readFilters(query) {
   };
 }
 
-/** Finished entries matching the filters. Members are always limited to their own time. */
-export async function reportEntries(user, f) {
+/**
+ * Finished entries matching the filters. Members are limited to their own time, except for the
+ * team Dashboard when the workspace allows it (`teamView`).
+ */
+export async function reportEntries(user, f, { teamView = false } = {}) {
   const where = ['e.end_at IS NOT NULL', 'e.start_at >= ?', 'e.start_at < ?'];
   const params = [f.start, f.end];
   const marks = (list) => list.map(() => '?').join(',');
 
-  if (user.role !== 'admin') {
+  const seesTeam = user.role === 'admin' || (teamView && (await getSettings()).membersSeeTeamDashboard);
+  if (!seesTeam) {
     where.push('e.user_id = ?');
     params.push(user.id);
   } else if (f.users) {
@@ -76,7 +80,7 @@ export async function reportEntries(user, f) {
 }
 
 r.get('/entries', async (req, res) => {
-  res.json({ entries: await reportEntries(req.user, readFilters(req.query)) });
+  res.json({ entries: await reportEntries(req.user, readFilters(req.query), { teamView: req.query.view === 'dashboard' }) });
 });
 
 const groupParam = (v, fallback) => (GROUP_OPTIONS.some(([k]) => k === v) ? v : fallback);

@@ -145,6 +145,7 @@ const DEFAULT_SETTINGS = {
   weekStart: '1',
   timeFormat: '24',
   membersCanCreate: '0',
+  membersSeeTeamDashboard: '0',
 };
 
 // Settings only change through setSettings in this process, so they are cached in memory.
@@ -161,6 +162,7 @@ export async function getSettings() {
     weekStart: Number(raw.weekStart) === 0 ? 0 : 1,
     timeFormat: raw.timeFormat === '12' ? '12' : '24',
     membersCanCreate: raw.membersCanCreate === '1',
+    membersSeeTeamDashboard: raw.membersSeeTeamDashboard === '1',
   };
   return settingsCache;
 }

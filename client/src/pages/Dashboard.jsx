@@ -13,13 +13,14 @@ export default function Dashboard() {
   const { settings, isAdmin, user, tagById, toast } = useData();
   const money = useMoney();
   const [range, setRange] = useState(() => presetRange('thisWeek', settings.weekStart));
-  const [scope, setScope] = useState(isAdmin ? 'team' : 'me');
+  const canSeeTeam = isAdmin || settings.membersSeeTeamDashboard;
+  const [scope, setScope] = useState(canSeeTeam ? 'team' : 'me');
   const [entries, setEntries] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     setEntries(null);
-    const query = qs({ start: range.start, end: range.end, users: scope === 'me' ? user.id : undefined, tz: TZ });
+    const query = qs({ start: range.start, end: range.end, users: scope === 'me' ? user.id : undefined, view: 'dashboard', tz: TZ });
     api
       .get(`/reports/entries?${query}`)
       .then((d) => !cancelled && setEntries(d.entries))
@@ -63,7 +64,7 @@ export default function Dashboard() {
       <div className="page-head">
         <h1>Dashboard</h1>
         <div className="dashboard-controls">
-          {isAdmin && (
+          {canSeeTeam && (
             <div className="segmented">
               <button type="button" className={scope === 'me' ? 'on' : ''} onClick={() => setScope('me')}>Only me</button>
               <button type="button" className={scope === 'team' ? 'on' : ''} onClick={() => setScope('team')}>Team</button>
@@ -138,7 +139,7 @@ export default function Dashboard() {
                 </ul>
               )}
             </div>
-            {scope === 'team' && isAdmin && (
+            {scope === 'team' && canSeeTeam && (
               <div className="card">
                 <div className="card-title">Team activities</div>
                 <ul className="activity-list">

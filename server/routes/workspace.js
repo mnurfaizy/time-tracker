@@ -25,6 +25,7 @@ r.put('/', requireAdmin, async (req, res) => {
   if ('weekStart' in b) next.weekStart = Number(b.weekStart) === 0 ? 0 : 1;
   if ('timeFormat' in b) next.timeFormat = b.timeFormat === '12' ? '12' : '24';
   if ('membersCanCreate' in b) next.membersCanCreate = !!b.membersCanCreate;
+  if ('membersSeeTeamDashboard' in b) next.membersSeeTeamDashboard = !!b.membersSeeTeamDashboard;
   await setSettings(next);
   res.json({ settings: await getSettings() });
 });
