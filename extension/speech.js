@@ -77,6 +77,11 @@ function listenNative({ lang, onText, onPhase }) {
   };
 }
 
+// Pause that ends the recording. People often stop for 1-2 s mid-sentence to think, so wait a bit longer.
+const END_SILENCE_MS = 3000;
+const NO_SPEECH_MS = 8000; // nothing said at all
+const MAX_MS = 40000;
+
 const MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
 
 function listenCloud({ lang, transcribe, onPhase }) {
@@ -108,7 +113,7 @@ function listenCloud({ lang, transcribe, onPhase }) {
     ctx.createMediaStreamSource(stream).connect(analyser);
     const buf = new Float32Array(analyser.fftSize);
     const started = Date.now();
-    let noise = 0.01;
+    let noise = null; // room noise level: the quietest moment seen so far
     let spoke = false;
     let lastVoice = 0;
 
@@ -126,13 +131,16 @@ function listenCloud({ lang, transcribe, onPhase }) {
       for (const v of buf) sum += v * v;
       const rms = Math.sqrt(sum / buf.length);
       const now = Date.now();
-      if (now - started < 400) noise = Math.max(noise, rms); // calibrate on room noise
-      const threshold = Math.max(0.02, noise * 2.5);
+      // Track the noise floor from the quietest frames, so speaking right away does not raise it.
+      noise = noise == null ? rms : Math.min(rms, noise * 1.02);
+      const start = Math.min(0.05, Math.max(0.015, noise * 3));
+      // Once speaking, softer sounds (trailing words, quiet voice) still count as speech.
+      const threshold = spoke ? Math.max(0.01, start * 0.6) : start;
       if (rms > threshold) {
         spoke = true;
         lastVoice = now;
       }
-      if ((spoke && now - lastVoice > 1500) || (!spoke && now - started > 8000) || now - started > 25000) finish();
+      if ((spoke && now - lastVoice > END_SILENCE_MS) || (!spoke && now - started > NO_SPEECH_MS) || now - started > MAX_MS) finish();
     }, 100);
 
     onPhase?.('listening');
