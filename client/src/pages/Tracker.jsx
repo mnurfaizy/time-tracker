@@ -7,6 +7,7 @@ import { TimeInput, DurationInput, DateButton } from '../components/inputs.jsx';
 import { KebabMenu, Popover, Spinner } from '../components/ui.jsx';
 import { EntryModal } from '../components/EntryModal.jsx';
 import { TrackerOverview, fmtHours } from '../components/TrackerOverview.jsx';
+import { useDictation, MicButton, DictationPanel } from '../components/Dictation.jsx';
 import {
   formatDuration, fmtDayLabel, fmtDate, fmtTime, startOfDay, startOfWeek, addDays, atMinutes, moveToDay, DAY,
 } from '../utils/time.js';
@@ -74,8 +75,10 @@ export default function Tracker() {
       const d = await api.post('/entries/start', fields);
       setRunning(d.entry);
       if (d.stopped) setEntries((list) => upsert(list, d.stopped));
+      return true;
     } catch (err) {
       toast(err.message);
+      return false;
     }
   };
 
@@ -185,6 +188,7 @@ export default function Tracker() {
         onUpdateRunning={updateRunning}
         onDiscard={discardRunning}
         onAddManual={addManual}
+        recent={entries}
       />
       {!loading && <TrackerOverview entriesVersion={entries} running={running} />}
       {loading ? (
@@ -235,8 +239,11 @@ function useNow(active) {
   return now;
 }
 
-function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddManual }) {
-  const { settings, projectById } = useData();
+const NEW_PROJECT_COLORS = ['#3E8E5E', '#4F68D8', '#C2861A', '#D24A3F', '#8E5EA8', '#2A9D8F', '#E07A5F', '#5C7AEA'];
+
+function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddManual, recent }) {
+  const { settings, projectById, projects, canCreate, upsertProject, toast } = useData();
+  const barRef = useRef(null);
   const [mode, setMode] = useState(storedMode);
   const [draft, setDraft] = useState(emptyDraft);
   const [desc, setDesc] = useState('');
@@ -279,11 +286,12 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
   };
 
   const startTimer = async (overrides = {}) => {
-    if (busy) return;
+    if (busy) return false;
     setBusy(true);
-    await onStart({ ...draft, description: desc, ...overrides });
+    const ok = await onStart({ ...draft, description: desc, ...overrides });
     setDraft(emptyDraft);
     setBusy(false);
+    return ok;
   };
 
   // In timer mode, picking an activity or a project starts tracking right away (no extra Start click).
@@ -314,8 +322,46 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
     else setFields(fields);
   };
 
+  // Dictation: a confident match starts the timer, otherwise the panel asks which project it is.
+  const applyVoice = async (project, task, description) => {
+    const fields = { description, projectId: project?.id ?? null, taskId: task?.id ?? null, tagIds: [], billable: project ? !!project.billable : false };
+    setDesc(description);
+    if (effectiveMode === 'manual') {
+      setDraft((d) => ({ ...d, ...fields }));
+      dictation.message('Filled in. Set the times and click Add.', 'success', 3500);
+      return;
+    }
+    const wasRunning = !!running;
+    if (await startTimer(fields)) {
+      dictation.message(`${wasRunning ? 'Switched to' : 'Started'}: ${description || '(no description)'}${project ? ` · ${project.name}` : ''}`, 'success', 3500);
+    } else {
+      dictation.close();
+    }
+  };
+  const dictation = useDictation({
+    projects,
+    recent,
+    onResult: (result, transcript) => {
+      const best = result.candidates[0];
+      if (result.confident && best) applyVoice(best.project, best.task, result.description);
+      else dictation.show({ kind: 'ask', result, transcript });
+    },
+  });
+  const createVoiceProject = async (name, description) => {
+    try {
+      const color = NEW_PROJECT_COLORS[projects.length % NEW_PROJECT_COLORS.length];
+      const { project } = await api.post('/projects', { name, color, clientId: null });
+      upsertProject(project);
+      await applyVoice(project, null, description);
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+
   return (
-    <div className={`timer-bar ${running ? 'is-running' : ''}`}>
+    <>
+    <div ref={barRef} className={`timer-bar ${running ? 'is-running' : ''} ${dictation.view ? 'has-voice' : ''}`}>
+      <div className="timer-desc-wrap">
       <DescriptionInput
         value={desc}
         onChange={setDesc}
@@ -326,6 +372,8 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
         }}
         onSuggestion={applySuggestion}
       />
+      <MicButton dictation={dictation} />
+      </div>
       <div className="timer-bar-tools">
         <ProjectPicker
           projectId={current.projectId}
@@ -382,6 +430,15 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
         </div>
       </div>
     </div>
+    <DictationPanel
+      dictation={dictation}
+      projects={projects}
+      canCreate={canCreate}
+      onPick={applyVoice}
+      onCreate={createVoiceProject}
+      onChoose={() => barRef.current?.querySelector('.project-picker-btn')?.click()}
+    />
+    </>
   );
 }
 
