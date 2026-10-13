@@ -55,7 +55,7 @@ export function ms(v, field) {
   return Math.round(n);
 }
 
-export function color(v, fallback = '#03A9F4') {
+export function color(v, fallback = '#3E8E5E') {
   const s = str(v, 7);
   return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toUpperCase() : fallback;
 }

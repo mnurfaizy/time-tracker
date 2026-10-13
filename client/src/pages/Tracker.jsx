@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, List, Play, X } from 'lucide-react';
+import { Clock, List, Play, X, Square, Plus, Coffee, Timer } from 'lucide-react';
 import { api } from '../api.js';
 import { useData } from '../store.jsx';
 import { ProjectPicker, TagPicker, BillableButton } from '../components/pickers.jsx';
 import { TimeInput, DurationInput, DateButton } from '../components/inputs.jsx';
-import { KebabMenu, Popover, Spinner, Empty } from '../components/ui.jsx';
+import { KebabMenu, Popover, Spinner } from '../components/ui.jsx';
+import { EntryModal } from '../components/EntryModal.jsx';
+import { TrackerOverview, fmtHours } from '../components/TrackerOverview.jsx';
 import {
   formatDuration, fmtDayLabel, fmtDate, fmtTime, startOfDay, startOfWeek, addDays, atMinutes, moveToDay, DAY,
 } from '../utils/time.js';
+
+const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const emptyDraft = { description: '', projectId: null, taskId: null, tagIds: [], billable: false };
 
@@ -152,9 +157,27 @@ export default function Tracker() {
 
   const weeks = useMemo(() => groupIntoWeeks(entries, settings.weekStart), [entries, settings.weekStart]);
   const actions = { updateEntry, deleteEntries, duplicate, continueEntry };
+  const [newEntry, setNewEntry] = useState(null);
+  const todayDate = new Date();
 
   return (
     <div className="page tracker-page">
+      <div className="page-head">
+        <div className="page-title-group">
+          <h1>Time Tracker</h1>
+          <div className="page-subtitle">{WEEKDAYS_LONG[todayDate.getDay()]}, {MONTHS_LONG[todayDate.getMonth()]} {todayDate.getDate()}</div>
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => {
+            const end = Date.now();
+            setNewEntry({ start: end - 3600000, end });
+          }}
+        >
+          <Plus size={16} /> New Entry
+        </button>
+      </div>
       <TimerBar
         running={running}
         onStart={start}
@@ -163,12 +186,18 @@ export default function Tracker() {
         onDiscard={discardRunning}
         onAddManual={addManual}
       />
+      {!loading && <TrackerOverview entriesVersion={entries} running={running} />}
       {loading ? (
         <div className="center-pad"><Spinner /></div>
       ) : weeks.length === 0 ? (
-        <Empty icon={<Clock size={48} />} title="Let's start tracking!">
-          Type what you are working on above and press <b>Start</b>, or switch to manual mode to add time you already spent.
-        </Empty>
+        <div className="empty-state">
+          <span className="empty-state-icon"><Coffee size={20} /></span>
+          <div className="empty-state-title">No time tracked yet</div>
+          <div className="empty-state-desc">Type what you are working on above and hit play to start your first timer.</div>
+          <button type="button" className="btn btn-primary" onClick={() => document.querySelector('.timer-desc')?.focus()}>
+            <Play size={16} /> Start timer
+          </button>
+        </div>
       ) : (
         weeks.map((w) => <WeekGroup key={w.start} week={w} actions={actions} timeFormat={settings.timeFormat} />)
       )}
@@ -178,6 +207,16 @@ export default function Tracker() {
             {loadingMore ? 'Loading…' : 'Load more'}
           </button>
         </div>
+      )}
+      {newEntry && (
+        <EntryModal
+          draft={newEntry}
+          onClose={() => setNewEntry(null)}
+          onSaved={(e) => {
+            setNewEntry(null);
+            setEntries((list) => upsert(list, e));
+          }}
+        />
       )}
     </div>
   );
@@ -304,15 +343,19 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
               <span className="timer-display">0:00:00</span>
             )}
             {running ? (
-              <button type="button" className="btn btn-stop" onClick={onStop}>Stop</button>
+              <button type="button" className="play-btn stop" onClick={onStop} title="Stop timer" aria-label="Stop timer">
+                <Square size={18} />
+              </button>
             ) : (
-              <button type="button" className="btn btn-primary btn-start" onClick={startTimer} disabled={busy}>Start</button>
+              <button type="button" className="play-btn" onClick={startTimer} disabled={busy} title="Start timer" aria-label="Start timer">
+                <Play size={20} />
+              </button>
             )}
           </>
         ) : (
           <>
             <ManualTimes value={manual} onChange={setManual} timeFormat={settings.timeFormat} />
-            <button type="button" className="btn btn-primary btn-start" onClick={add} disabled={busy}>Add</button>
+            <button type="button" className="btn btn-primary" onClick={add} disabled={busy}><Plus size={16} /> Add</button>
           </>
         )}
         <div className="mode-switch">
@@ -528,18 +571,20 @@ function WeekGroup({ week, actions, timeFormat }) {
   return (
     <section className="week">
       <div className="week-header">
-        <span>{weekLabel(week.start, settings.weekStart)}</span>
-        <span className="week-total">Week total: <b>{formatDuration(week.total)}</b></span>
+        <span className="week-title">{weekLabel(week.start, settings.weekStart)}</span>
+        <span className="week-total">Week total <b>{formatDuration(week.total)}</b></span>
       </div>
       {week.days.map((d) => (
-        <div key={d.start} className="day-card">
+        <div key={d.start} className="day-group">
           <div className="day-header">
-            <span>{fmtDayLabel(d.start)}</span>
-            <span className="day-total">Total: <b>{formatDuration(d.total)}</b></span>
+            <h3 className="day-title">{fmtDayLabel(d.start)}</h3>
+            <span className="badge badge-solid"><Timer size={12} /> {fmtHours(d.total)}</span>
           </div>
-          {groupSimilar(d.entries).map((g) => (
-            <EntryGroup key={g.key + g.entries[0].id} group={g} actions={actions} timeFormat={timeFormat} />
-          ))}
+          <div className="day-card">
+            {groupSimilar(d.entries).map((g) => (
+              <EntryGroup key={g.key + g.entries[0].id} group={g} actions={actions} timeFormat={timeFormat} />
+            ))}
+          </div>
         </div>
       ))}
     </section>
@@ -583,39 +628,41 @@ function EntryRow({ entry, actions, timeFormat, group, child }) {
 
   return (
     <div className={`entry-row ${child ? 'child' : ''} ${group ? 'grouped' : ''}`}>
-      <div className="entry-main">
-        {group && (
-          <button type="button" className={`group-count ${group.expanded ? 'on' : ''}`} onClick={group.toggle} title="Show grouped entries">
-            {group.count}
-          </button>
-        )}
-        <input
-          className="entry-desc"
-          placeholder="Add description"
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          onBlur={() => desc !== entry.description && update({ description: desc })}
-          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        />
-        <ProjectPicker
-          projectId={entry.projectId}
-          taskId={entry.taskId}
-          fallback={entry}
-          onChange={({ projectId, taskId, project }) => {
-            const patch = { projectId, taskId };
-            if (project && projectId !== entry.projectId) patch.billable = project.billable;
-            update(patch);
-          }}
-        />
+      <div className="entry-info">
+        <div className="entry-desc-row">
+          {group && (
+            <button type="button" className={`group-count ${group.expanded ? 'on' : ''}`} onClick={group.toggle} title="Show grouped entries">
+              {group.count}
+            </button>
+          )}
+          <input
+            className="entry-desc"
+            placeholder="Add description"
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            onBlur={() => desc !== entry.description && update({ description: desc })}
+            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+          />
+        </div>
+        <div className="entry-meta">
+          <ProjectPicker
+            projectId={entry.projectId}
+            taskId={entry.taskId}
+            fallback={entry}
+            onChange={({ projectId, taskId, project }) => {
+              const patch = { projectId, taskId };
+              if (project && projectId !== entry.projectId) patch.billable = project.billable;
+              update(patch);
+            }}
+          />
+          <BillableButton variant="badge" billable={entry.billable} onChange={(billable) => update({ billable })} />
+          <TagPicker tagIds={entry.tagIds} onChange={(tagIds) => update({ tagIds })} />
+        </div>
       </div>
       <div className="entry-tools">
-        <span className="vsep dotted" />
-        <TagPicker tagIds={entry.tagIds} onChange={(tagIds) => update({ tagIds })} />
-        <BillableButton billable={entry.billable} onChange={(billable) => update({ billable })} />
-        <span className="vsep dotted" />
         {group ? (
           <span className="time-range static">
-            {fmtTime(entry.start, timeFormat)} - {fmtTime(entry.end, timeFormat)}
+            {fmtTime(entry.start, timeFormat)} – {fmtTime(entry.end, timeFormat)}
           </span>
         ) : (
           <span className="time-range">
@@ -623,20 +670,20 @@ function EntryRow({ entry, actions, timeFormat, group, child }) {
               value={entry.start}
               timeFormat={timeFormat}
               onCommit={(min) => {
-                const s = atMinutes(entry.start, min);
-                let e = entry.end;
-                if (e < s) e += DAY * Math.ceil((s - e) / DAY);
-                update({ start: s, end: e });
+                const st = atMinutes(entry.start, min);
+                let en = entry.end;
+                if (en < st) en += DAY * Math.ceil((st - en) / DAY);
+                update({ start: st, end: en });
               }}
             />
-            <span className="dash">-</span>
+            <span className="dash">–</span>
             <TimeInput
               value={entry.end}
               timeFormat={timeFormat}
               onCommit={(min) => {
-                let e = atMinutes(entry.start, min);
-                if (e < entry.start) e += DAY;
-                update({ end: e });
+                let en = atMinutes(entry.start, min);
+                if (en < entry.start) en += DAY;
+                update({ end: en });
               }}
             />
             {crossesDay && <sup className="next-day">+1</sup>}
@@ -646,19 +693,18 @@ function EntryRow({ entry, actions, timeFormat, group, child }) {
           <DateButton
             value={entry.start}
             onChange={(day) => {
-              const s = moveToDay(entry.start, day);
-              update({ start: s, end: s + (entry.end - entry.start) });
+              const st = moveToDay(entry.start, day);
+              update({ start: st, end: st + (entry.end - entry.start) });
             }}
           />
         )}
-        <span className="vsep dotted" />
         {group ? (
           <span className="duration-input static">{formatDuration(duration)}</span>
         ) : (
           <DurationInput value={duration} onCommit={(d) => update({ end: entry.start + d })} />
         )}
         <button type="button" className="icon-btn play" onClick={() => actions.continueEntry(entry)} title="Continue this activity">
-          <Play size={18} />
+          <Play size={16} />
         </button>
         <KebabMenu
           items={
@@ -674,4 +720,3 @@ function EntryRow({ entry, actions, timeFormat, group, child }) {
     </div>
   );
 }
-

@@ -194,8 +194,8 @@ export function Empty({ icon, title, children }) {
 }
 
 export const PROJECT_COLORS = [
-  '#F44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4',
-  '#009688', '#4CAF50', '#8BC34A', '#CDDC39', '#FFC107', '#FF9800', '#FF5722', '#795548', '#607D8B',
+  '#3E8E5E', '#4F68D8', '#E0A23A', '#E06A5A', '#8C63D2', '#2A9D8F', '#D4618C', '#7E9A3C',
+  '#C2861A', '#5B7FD6', '#B5563B', '#3B7A8C', '#9C6B3F', '#6D7A70', '#A8486A', '#4E9F6E', '#7A5CC0',
 ];
 
 export function ColorPicker({ value, onChange }) {

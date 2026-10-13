@@ -46,7 +46,7 @@ function sample(x, y, gray) {
   const ring = Math.abs(d - 0.31) < 0.055;
   const hands = segDist(x, y, 0.5, 0.5, 0.5, 0.29) < 0.05 || segDist(x, y, 0.5, 0.5, 0.64, 0.6) < 0.05;
   if (ring || hands) return white;
-  return gray ? [144, 164, 174] : [3, 169, 244];
+  return gray ? [154, 163, 156] : [62, 142, 94];
 }
 
 function render(size, gray = false) {

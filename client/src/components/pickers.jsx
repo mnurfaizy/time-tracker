@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { CirclePlus, Search, Tag, DollarSign, ChevronDown, ChevronUp } from 'lucide-react';
+import { CirclePlus, Search, Tag, CircleDollarSign, ChevronDown, ChevronUp } from 'lucide-react';
 import { Popover, useToggle, Modal, Checkbox, ColorPicker, Field, PROJECT_COLORS } from './ui.jsx';
 import { useData } from '../store.jsx';
 import { api } from '../api.js';
@@ -14,7 +14,7 @@ export function ProjectLabel({ project, task, clientName, fallback }) {
   const client = clientName ?? fallback?.clientName;
   const taskName = task?.name ?? fallback?.taskName;
   return (
-    <span className="project-label" style={{ color }}>
+    <span className="project-label">
       <span className="dot" style={{ background: color }} />
       <span className="project-label-text">
         {name}
@@ -306,7 +306,21 @@ export function TagPicker({ tagIds, onChange, showNames = true }) {
   );
 }
 
-export function BillableButton({ billable, onChange }) {
+/** Billable toggle: a $ icon (timer bar, dialogs) or a Billable / Non-billable badge (entry rows). */
+export function BillableButton({ billable, onChange, variant = 'icon' }) {
+  if (variant === 'badge') {
+    return (
+      <button
+        type="button"
+        className={`badge badge-btn ${billable ? 'badge-success' : 'badge-neutral'}`}
+        onClick={() => onChange(!billable)}
+        title="Click to toggle billable"
+        aria-pressed={billable}
+      >
+        {billable ? 'Billable' : 'Non-billable'}
+      </button>
+    );
+  }
   return (
     <button
       type="button"
@@ -315,7 +329,7 @@ export function BillableButton({ billable, onChange }) {
       title={billable ? 'Billable' : 'Non-billable'}
       aria-pressed={billable}
     >
-      <DollarSign size={18} />
+      <CircleDollarSign size={18} />
     </button>
   );
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, CalendarDays, Plus } from 'lucide-react';
 import { api } from '../api.js';
 import { useData } from '../store.jsx';
@@ -46,7 +46,8 @@ function layoutDay(items) {
 
 export default function CalendarPage() {
   const { settings, user, projectById, toast, googleConfigured } = useData();
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), settings.weekStart).getTime());
+  const [params] = useSearchParams();
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(fromDateInput(params.get('date') || '') ?? new Date(), settings.weekStart).getTime());
   const [entries, setEntries] = useState([]);
   const [events, setEvents] = useState([]);
   const [showEvents, setShowEvents] = useState(() => localStorage.getItem('tt.calEvents') !== 'off');

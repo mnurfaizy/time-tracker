@@ -101,7 +101,7 @@ async function readProjectInput(body, current) {
 r.get('/', async (req, res) => res.json({ projects: await listProjects(req.user) }));
 
 r.post('/', requireCreator, async (req, res) => {
-  const v = await readProjectInput(req.body, { color: '#03A9F4', billable: 1, is_public: 1, archived: 0, note: '', hourly_rate: null });
+  const v = await readProjectInput(req.body, { color: '#3E8E5E', billable: 1, is_public: 1, archived: 0, note: '', hourly_rate: null });
   const { rows } = await q.run(
     `INSERT INTO projects (name, client_id, color, billable, hourly_rate, is_public, archived, note, created_at)
      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?) RETURNING id`,

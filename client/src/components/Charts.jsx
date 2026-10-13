@@ -22,7 +22,7 @@ function niceMax(maxMs) {
 }
 
 /** Vertical bar chart of durations. data: [{ label, sub, value }] */
-export function BarChart({ data, height = 240, color = '#8BC34A' }) {
+export function BarChart({ data, height = 240, color = '#3E8E5E' }) {
   const [ref, width] = useWidth();
   const left = 48;
   const bottom = data.length > 0 && data[0].sub ? 40 : 26;
@@ -55,7 +55,7 @@ export function BarChart({ data, height = 240, color = '#8BC34A' }) {
             <g key={i}>
               <title>{`${d.label}${d.sub ? ` ${d.sub}` : ''}: ${formatDuration(d.value)}`}</title>
               <rect x={left + slot * i} y={top} width={slot} height={plotH} fill="transparent" />
-              {d.value > 0 && <rect x={x} y={y} width={barW} height={Math.max(h, 1)} fill={color} rx="1" />}
+              {d.value > 0 && <rect x={x} y={y} width={barW} height={Math.max(h, 1)} fill={color} rx={Math.min(6, barW / 2)} />}
               {d.value > 0 && barW >= 24 && (
                 <text x={x + barW / 2} y={y - 5} textAnchor="middle" className="chart-value">{fmtHM(d.value)}</text>
               )}
@@ -81,7 +81,7 @@ export function Donut({ segments, size = 220, centerLabel }) {
   let offset = 0;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="donut" role="img" aria-label="Distribution chart">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#E4EAEE" strokeWidth="28" />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#EDF1EC" strokeWidth="28" />
       {total > 0 &&
         segments.map((s, i) => {
           const len = (s.value / total) * c;
@@ -111,14 +111,14 @@ export function Donut({ segments, size = 220, centerLabel }) {
 }
 
 export const CHART_COLORS = [
-  '#03A9F4', '#8BC34A', '#FF9800', '#9C27B0', '#F44336', '#009688', '#3F51B5', '#FFC107',
-  '#E91E63', '#00BCD4', '#795548', '#607D8B', '#CDDC39', '#673AB7', '#FF5722', '#4CAF50',
+  '#3E8E5E', '#4F68D8', '#E0A23A', '#E06A5A', '#8C63D2', '#2A9D8F', '#D4618C', '#7E9A3C',
+  '#C2861A', '#5B7FD6', '#B5563B', '#3B7A8C', '#9C6B3F', '#6D7A70', '#A8486A', '#4E9F6E', '#7A5CC0',
 ];
 
 /** Turns grouped report nodes into donut segments (top 9 + "Other"). */
 export function toSegments(nodes) {
   const top = nodes.slice(0, 9).map((n, i) => ({ label: n.label, value: n.duration, color: n.color || CHART_COLORS[i % CHART_COLORS.length] }));
   const rest = nodes.slice(9).reduce((s, n) => s + n.duration, 0);
-  if (rest > 0) top.push({ label: 'Other', value: rest, color: '#C6D2D9' });
+  if (rest > 0) top.push({ label: 'Other', value: rest, color: '#D3DBD2' });
   return top;
 }
