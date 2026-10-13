@@ -33,6 +33,24 @@ export async function api(method, path, body, tokenOverride) {
   return data;
 }
 
+/** Sends recorded speech to the server, which transcribes it (Groq Whisper). Returns the text. */
+export async function transcribeAudio(blob, lang) {
+  const token = await getToken();
+  let res;
+  try {
+    res = await fetch(`${SERVER}/api/transcribe?lang=${lang.startsWith('en') ? 'en' : 'id'}`, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'fetch', 'Content-Type': blob.type || 'audio/webm', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: blob,
+    });
+  } catch {
+    throw new Error('Cannot reach Time Tracker. Check your internet connection.');
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `Transcription failed (${res.status})`);
+  return data.text || '';
+}
+
 export const pad = (n) => String(n).padStart(2, '0');
 
 export function formatDuration(ms) {

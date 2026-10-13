@@ -389,6 +389,8 @@ select.filter-btn { padding-right: 10px; }
 .voice-title { flex: 1; font-weight: 800; }
 .voice-pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: voice-pulse 1s ease-in-out infinite alternate; }
 @keyframes voice-pulse { from { opacity: 0.35; transform: scale(0.8); } to { opacity: 1; transform: scale(1.1); } }
+.voice-spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--primary-soft); border-top-color: var(--primary); animation: voice-spin 0.8s linear infinite; }
+@keyframes voice-spin { to { transform: rotate(360deg); } }
 .voice-langs { display: flex; padding: 2px; border-radius: var(--pill); background: #fff; border: 1px solid var(--border); }
 .voice-lang { height: 24px; padding: 0 10px; border-radius: var(--pill); font-size: 12px; font-weight: 800; color: var(--muted); }
 .voice-lang.on { background: var(--primary); color: #fff; }
@@ -411,9 +413,9 @@ select.filter-btn { padding-right: 10px; }
 .voice-panel .btn-ghost:hover { color: var(--text); background: #fff; }
 .voice-note { font-size: 13px; color: var(--text-2); padding: 8px 12px; border-radius: var(--radius-md); background: #fff; }
 .voice-msg { font-weight: 700; line-height: 1.5; }
-.voice-msg.success { color: var(--primary-text); }
-.voice-msg.warn { color: var(--warning, #c2861a); }
-.voice-msg.error { color: var(--danger); }
+.voice-msg.tone-success { color: var(--primary-text); }
+.voice-msg.tone-warn { color: var(--warning, #c2861a); }
+.voice-msg.tone-error { color: var(--danger); }
 
 .project-picker-btn {
   display: inline-flex; align-items: center; min-width: 0; max-width: 340px; flex: 0 1 auto;

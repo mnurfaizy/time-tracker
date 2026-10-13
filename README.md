@@ -133,9 +133,22 @@ Start/stop timer langsung dari toolbar Chrome, Edge, Brave atau Opera: deskripsi
 
 Shortcut: **Alt+Shift+U** membuka ekstensi, **Alt+Shift+S** start/stop timer (bisa diubah di `chrome://extensions/shortcuts`).
 
-**Dictation (tombol mic, ada di ekstensi dan di halaman Time Tracker web)**: ucapkan apa yang dikerjakan dan untuk project apa, misalnya *"review modul untuk project BSI AI Literacy"*. Jika project dikenali dengan yakin (nama project/klien/task, plus riwayat aktivitas Anda), timer langsung jalan. Jika tidak yakin, ekstensi menanyakan pilihan project, atau menawarkan mendaftarkan nama yang diucapkan sebagai project baru (admin, atau member bila "members can create" aktif). Speech-to-text memakai fitur bawaan Chrome/Edge (gratis, butuh internet); pemetaan project dilakukan lokal di ekstensi. Di web, browser meminta izin mikrofon seperti biasa; di ekstensi, saat pertama kali dipakai ekstensi membuka tab untuk meminta izin mikrofon sekali saja.
+**Dictation (tombol mic, di ekstensi dan di halaman Time Tracker web)**: ucapkan apa yang dikerjakan dan untuk project apa, misalnya *"review modul untuk project BSI AI Literacy"*. Jika project dikenali dengan yakin (nama project/klien/task, plus riwayat aktivitas Anda), timer langsung jalan. Jika tidak yakin, aplikasi menanyakan pilihan project, atau menawarkan mendaftarkan nama yang diucapkan sebagai project baru (admin, atau member bila "members can create" aktif). Lihat bagian **Dictation: speech-to-text** di bawah.
 
 Kode sumber ekstensi ada di folder `extension/`. Ikon dibuat ulang dengan `node scripts/make-icons.mjs`. Jika ingin dipasang tanpa Developer mode, ekstensi bisa diunggah ke Microsoft Edge Add-ons (gratis) atau Chrome Web Store (biaya pendaftaran developer sekali bayar).
+
+## Dictation: speech-to-text (gratis)
+
+Ada dua mesin:
+
+- **Groq Whisper (disarankan)**: jalan di semua browser (Chrome, Edge, Brave, Firefox, Opera, ...) dan jauh lebih akurat, karena diberi "kosakata" berupa deskripsi aktivitas terbaru, nama project, dan nama task milik user. Audio direkam di browser, dikirim ke server ini, lalu ditranskripsi Groq. Audio tidak disimpan. Gratis, tanpa kartu kredit (batas free tier jauh di atas kebutuhan ~20 user).
+- **Mesin bawaan browser**: dipakai otomatis bila `GROQ_API_KEY` belum diisi. Hanya jalan di Google Chrome dan Microsoft Edge, dan akurasinya lebih rendah.
+
+Cara mengaktifkan Groq:
+1. Buka https://console.groq.com, daftar (bisa pakai akun Google).
+2. Menu **API Keys** → **Create API Key** → beri nama, misalnya `timetracker` → salin key-nya (hanya tampil sekali).
+3. Di Render: service **timetracker** → **Environment** → **Add Environment Variable** → Key `GROQ_API_KEY`, Value: key tadi → **Save, rebuild, and deploy**.
+4. Selesai. Semua user otomatis memakai Groq, tidak perlu download ulang ekstensi.
 
 ## Alternatif: jalankan di server sendiri
 Tanpa `TURSO_*`, aplikasi memakai file database lokal di folder `data/`, jadi juga bisa dijalankan di PC/VM sendiri (`npm start`, atau `docker compose up -d --build`). Untuk dipakai tim dari luar kantor, dibutuhkan alamat HTTPS (mis. Cloudflare Tunnel dengan domain sendiri).

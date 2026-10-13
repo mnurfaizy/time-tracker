@@ -1,5 +1,5 @@
 import { SERVER } from './config.js';
-import { api, AuthError, getToken, setToken, formatDuration, updateBadge } from './api.js';
+import { api, AuthError, getToken, setToken, formatDuration, updateBadge, transcribeAudio } from './api.js';
 import { setupVoice } from './voice.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,6 +22,7 @@ const state = {
   todayDone: 0,
   tagsOpen: false,
   canCreate: false,
+  cloudSpeech: false,
 };
 let ticker = null;
 
@@ -416,6 +417,7 @@ async function loadMain() {
     api('GET', '/auth/me'),
   ]);
   state.canCreate = me.user.role === 'admin' || !!me.settings?.membersCanCreate;
+  state.cloudSpeech = !!me.transcribeConfigured;
   state.projects = projects;
   state.tags = tags;
   state.running = entry;
@@ -432,7 +434,8 @@ async function loadMain() {
 const NEW_PROJECT_COLORS = ['#3E8E5E', '#4F68D8', '#C2861A', '#D24A3F', '#8E5EA8', '#2A9D8F', '#E07A5F', '#5C7AEA'];
 
 setupVoice({
-  context: () => ({ projects: state.projects, recent: state.recentAll, canCreate: state.canCreate, running: state.running }),
+  context: () => ({ projects: state.projects, recent: state.recentAll, canCreate: state.canCreate, running: state.running, cloudAvailable: state.cloudSpeech }),
+  transcribe: transcribeAudio,
   start: async (fields) => {
     if (!(await start(fields))) throw new Error($('error').textContent || 'Could not start the timer');
   },

@@ -242,7 +242,7 @@ function useNow(active) {
 const NEW_PROJECT_COLORS = ['#3E8E5E', '#4F68D8', '#C2861A', '#D24A3F', '#8E5EA8', '#2A9D8F', '#E07A5F', '#5C7AEA'];
 
 function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddManual, recent }) {
-  const { settings, projectById, projects, canCreate, upsertProject, toast } = useData();
+  const { settings, projectById, projects, canCreate, upsertProject, toast, transcribeConfigured } = useData();
   const barRef = useRef(null);
   const [mode, setMode] = useState(storedMode);
   const [draft, setDraft] = useState(emptyDraft);
@@ -341,6 +341,7 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
   const dictation = useDictation({
     projects,
     recent,
+    cloudAvailable: transcribeConfigured,
     onResult: (result, transcript) => {
       const best = result.candidates[0];
       if (result.confident && best) applyVoice(best.project, best.task, result.description);

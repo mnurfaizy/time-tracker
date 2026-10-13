@@ -1,11 +1,12 @@
 // Voice dictation for the timer bar: "review modul untuk project BSI AI Literacy" starts the timer on that project.
-// Speech-to-text is the browser's built-in Web Speech API; the project is matched locally by the same
-// matcher the browser extension uses. When the match is not confident the user is asked to confirm.
+// Speech-to-text runs through the shared speech.js (Groq Whisper via our server when configured, otherwise the
+// browser's built-in engine); the project is matched locally by the same matcher the browser extension uses.
+// When the match is not confident the user is asked to confirm.
 import { useEffect, useRef, useState } from 'react';
 import { Mic } from 'lucide-react';
 import { interpret, titleCase } from '../../../extension/matcher.js';
+import { pickEngine, listenOnce, speechErrorMessage } from '../../../extension/speech.js';
 
-const SpeechRecognition = typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
 const LANGS = { 'id-ID': 'Bahasa Indonesia', 'en-US': 'English' };
 
 function storedLang() {
@@ -17,15 +18,30 @@ function storedLang() {
   }
 }
 
+async function transcribe(blob, lang) {
+  const res = await fetch(`/api/transcribe?lang=${lang.startsWith('en') ? 'en' : 'id'}`, {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'fetch', 'Content-Type': blob.type || 'audio/webm' },
+    credentials: 'same-origin',
+    body: blob,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `Transcription failed (${res.status})`);
+  return data.text || '';
+}
+
 /**
  * Speech recognition state machine.
- * view: null | { kind: 'listening', text } | { kind: 'ask', result, transcript } | { kind: 'message', text, tone }
+ * view: null | { kind: 'listening', text, engine } | { kind: 'transcribing' } | { kind: 'ask', result, transcript }
+ *       | { kind: 'message', text, tone }
  */
-export function useDictation({ projects, recent, onResult }) {
+export function useDictation({ projects, recent, cloudAvailable, onResult }) {
   const [view, setView] = useState(null);
   const [lang, setLangState] = useState(storedLang);
-  const rec = useRef(null);
-  const flags = useRef({});
+  const session = useRef(null);
+  const engineRef = useRef(null);
+  const langRef = useRef(lang);
+  langRef.current = lang;
   const hideTimer = useRef(null);
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
@@ -42,85 +58,67 @@ export function useDictation({ projects, recent, onResult }) {
 
   useEffect(() => () => {
     clearTimeout(hideTimer.current);
-    flags.current.cancelled = true;
-    rec.current?.abort();
+    session.current?.cancel();
   }, []);
 
-  const listen = (language = lang) => {
-    if (!SpeechRecognition) {
-      message('Dictation is not supported in this browser. Use Google Chrome or Microsoft Edge.', 'error');
+  const listen = async () => {
+    const engine = pickEngine({ cloudAvailable });
+    if (!engine) {
+      message('Dictation is not supported in this browser.', 'error');
       return;
     }
-    flags.current = { final: '', error: null, cancelled: false, restart: null };
-    const r = new SpeechRecognition();
-    rec.current = r;
-    r.lang = language;
-    r.interimResults = true;
-    r.continuous = false;
-    r.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) flags.current.final += e.results[i][0].transcript;
-        else interim += e.results[i][0].transcript;
-      }
-      show({ kind: 'listening', text: `${flags.current.final} ${interim}`.trim() });
-    };
-    r.onerror = (e) => {
-      flags.current.error = e.error;
-    };
-    r.onend = () => {
-      const { error, cancelled, restart, final } = flags.current;
-      rec.current = null;
-      if (restart) return listen(restart);
-      if (cancelled || error === 'aborted') return;
-      if (error === 'not-allowed' || error === 'service-not-allowed') {
-        return message('Microphone access is blocked. Allow it from the icon at the left of the address bar, then try again.', 'warn');
-      }
-      if (error === 'network') return message('Dictation needs an internet connection. Please try again.', 'error');
-      if (error === 'audio-capture') return message('No microphone was found on this device.', 'error');
-      const text = final.trim();
-      if (!text) return message('No speech was detected. Click the mic and try again.', 'warn', 4000);
-      const result = interpret(text, ctx.current);
-      onResultRef.current(result, text);
-    };
-    show({ kind: 'listening', text: '' });
-    try {
-      r.start();
-    } catch {
-      rec.current = null;
-    }
+    engineRef.current = engine;
+    const s = listenOnce({
+      engine,
+      lang: langRef.current,
+      transcribe: (blob) => transcribe(blob, langRef.current),
+      onText: (text) => show({ kind: 'listening', text, engine }),
+      onPhase: (phase) => phase === 'transcribing' && show({ kind: 'transcribing' }),
+    });
+    session.current = s;
+    show({ kind: 'listening', text: '', engine });
+    const r = await s.result;
+    if (session.current !== s) return; // replaced, e.g. after switching language
+    session.current = null;
+    if (r.error === 'aborted') return;
+    if (r.error) return message(speechErrorMessage(r, { engine, cloudAvailable }), r.error === 'not-allowed' ? 'warn' : 'error');
+    const text = r.text.trim();
+    if (!text) return message('No speech was detected. Click the mic and try again.', 'warn', 4000);
+    onResultRef.current(interpret(text, ctx.current), text);
   };
 
   const setLang = (l) => {
     setLangState(l);
+    langRef.current = l;
     try {
       localStorage.setItem('tt.voiceLang', l);
     } catch {
       // ignore
     }
-    if (rec.current) {
-      flags.current.restart = l;
-      rec.current.abort();
-    } else {
-      listen(l);
+    // Built-in engine: restart in the new language. Whisper: the language applies when transcribing.
+    if (!session.current) listen();
+    else if (engineRef.current === 'native') {
+      session.current.cancel();
+      listen();
     }
   };
 
   const toggle = () => {
-    if (rec.current) rec.current.stop();
-    else listen();
+    if (session.current && view?.kind === 'listening') session.current.stop();
+    else if (!session.current) listen();
   };
 
   const cancel = () => {
-    flags.current.cancelled = true;
-    rec.current?.abort();
+    const s = session.current;
+    session.current = null;
+    s?.cancel();
     close();
   };
 
   return {
     view, lang, setLang, toggle, cancel, close, message, show,
     listening: view?.kind === 'listening',
-    finish: () => rec.current?.stop(),
+    finish: () => session.current?.stop(),
   };
 }
 
@@ -172,7 +170,9 @@ export function DictationPanel({ dictation, projects, canCreate, onPick, onCreat
           </div>
         </div>
         <div className={`voice-transcript ${view.text ? '' : 'placeholder'}`}>
-          {view.text || 'Say what you are working on and for which project, e.g. “Review modul untuk project BSI AI Literacy”.'}
+          {view.text || (view.engine === 'cloud'
+            ? 'Say what you are working on and for which project, e.g. “Review modul untuk project BSI AI Literacy”. It stops by itself when you pause.'
+            : 'Say what you are working on and for which project, e.g. “Review modul untuk project BSI AI Literacy”.')}
         </div>
         <div className="voice-actions">
           <button type="button" className="btn btn-outline btn-sm" onClick={dictation.finish}>Done</button>
@@ -182,10 +182,21 @@ export function DictationPanel({ dictation, projects, canCreate, onPick, onCreat
     );
   }
 
+  if (view.kind === 'transcribing') {
+    return (
+      <div className="voice-panel" aria-live="polite">
+        <div className="voice-head">
+          <span className="voice-spinner" />
+          <span className="voice-title">Transcribing…</span>
+        </div>
+      </div>
+    );
+  }
+
   if (view.kind === 'message') {
     return (
       <div className="voice-panel" aria-live="polite">
-        <div className={`voice-msg ${view.tone}`}>{view.text}</div>
+        <div className={`voice-msg tone-${view.tone}`}>{view.text}</div>
         {view.tone !== 'success' && (
           <div className="voice-actions">
             <button type="button" className="btn btn-ghost btn-sm" onClick={dictation.close}>Close</button>

@@ -1,9 +1,9 @@
 // Dictation: speak "review modul untuk project BSI AI Literacy" and the timer starts on the right project.
-// Speech-to-text uses the browser's built-in Web Speech API (free, needs internet); the project is
-// matched locally by matcher.js. When the match is not confident, the user is asked to confirm.
+// Speech-to-text runs through speech.js (Groq Whisper via our server, or the browser's built-in engine);
+// the project is matched locally by matcher.js. When the match is not confident, the user is asked to confirm.
 import { interpret, titleCase } from './matcher.js';
+import { pickEngine, listenOnce, speechErrorMessage } from './speech.js';
 
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const LANGS = { 'id-ID': 'Bahasa Indonesia', 'en-US': 'English' };
 
 /** Tiny DOM helper: el('button', { className, onclick }, 'text', child) */
@@ -22,16 +22,17 @@ function projectLabel(project, task) {
 
 /**
  * @param {object} deps
- * @param {() => {projects, recent, canCreate, running}} deps.context
+ * @param {() => {projects, recent, canCreate, running, cloudAvailable}} deps.context
+ * @param {(blob, lang) => Promise<string>} deps.transcribe  sends audio to the server
  * @param {(fields) => Promise<void>} deps.start     starts a timer (stops the running one)
  * @param {(name) => Promise<object>} deps.createProject
  * @param {() => void} deps.openPicker
  */
-export function setupVoice({ context, start, createProject, openPicker }) {
+export function setupVoice({ context, start, createProject, openPicker, transcribe }) {
   const panel = document.getElementById('voice-panel');
   const micBtn = document.getElementById('mic');
   const descInput = document.getElementById('description');
-  const voice = { rec: null, listening: false, lang: 'id-ID', finalText: '', hideTimer: null };
+  const voice = { session: null, listening: false, lang: 'id-ID', hideTimer: null };
 
   chrome.storage.local.get('voiceLang').then(({ voiceLang }) => {
     if (voiceLang && LANGS[voiceLang]) voice.lang = voiceLang;
@@ -52,7 +53,7 @@ export function setupVoice({ context, start, createProject, openPicker }) {
 
   const message = (text, tone = 'info', { autoHide = 0, action } = {}) => {
     render(
-      el('div', { className: `voice-msg ${tone}` }, text),
+      el('div', { className: `voice-msg tone-${tone}` }, text),
       action ? el('button', { className: 'voice-btn primary', type: 'button', onclick: action.onClick }, action.label) : null,
     );
     if (autoHide) voice.hideTimer = setTimeout(close, autoHide);
@@ -75,12 +76,12 @@ export function setupVoice({ context, start, createProject, openPicker }) {
           onclick: () => {
             voice.lang = code;
             chrome.storage.local.set({ voiceLang: code });
-            if (voice.listening) {
-              voice.restart = true;
-              voice.rec?.abort();
-            } else {
+            // Built-in engine: restart in the new language. Whisper: the language applies when transcribing.
+            if (!voice.listening) listen();
+            else if (voice.engine === 'native') {
+              voice.session?.cancel();
               listen();
-            }
+            } else showListening();
           },
         }),
       ),
@@ -94,10 +95,20 @@ export function setupVoice({ context, start, createProject, openPicker }) {
         langToggle(),
       ),
       el('div', { className: `voice-transcript ${interim ? '' : 'placeholder'}` },
-        interim || 'Say what you are working on and for which project, e.g. “Review modul untuk project BSI AI Literacy”.'),
+        interim || (voice.engine === 'cloud'
+          ? 'Say what you are working on and for which project. It stops by itself when you pause.'
+          : 'Say what you are working on and for which project, e.g. “Review modul untuk project BSI AI Literacy”.')),
       el('div', { className: 'voice-actions' },
-        el('button', { type: 'button', className: 'voice-btn', onclick: () => voice.rec?.stop() }, 'Done'),
-        el('button', { type: 'button', className: 'voice-btn ghost', onclick: () => { voice.cancelled = true; voice.rec?.abort(); close(); } }, 'Cancel'),
+        el('button', { type: 'button', className: 'voice-btn', onclick: () => voice.session?.stop() }, 'Done'),
+        el('button', { type: 'button', className: 'voice-btn ghost', onclick: () => { voice.session?.cancel(); close(); } }, 'Cancel'),
+      ),
+    );
+
+  const showTranscribing = () =>
+    render(
+      el('div', { className: 'voice-head' },
+        el('span', { className: 'voice-spinner' }),
+        el('span', { className: 'voice-title' }, 'Transcribing…'),
       ),
     );
 
@@ -175,65 +186,53 @@ export function setupVoice({ context, start, createProject, openPicker }) {
     }
     const { projects, recent } = context();
     const result = interpret(text, { projects, recent });
-    descInput.value = result.description;
     const best = result.candidates[0];
     if (result.confident && best) await begin(result.description, best.project, best.task);
     else ask(result, text);
   }
 
-  function listen() {
-    if (!SpeechRecognition) {
-      message('Dictation is not supported in this browser. Use Google Chrome or Microsoft Edge.', 'error');
+  async function listen() {
+    const { cloudAvailable } = context();
+    const engine = pickEngine({ cloudAvailable });
+    if (!engine) {
+      message('Dictation is not supported in this browser.', 'error');
       return;
     }
-    voice.finalText = '';
-    voice.cancelled = false;
-    voice.restart = false;
-    const rec = new SpeechRecognition();
-    voice.rec = rec;
-    rec.lang = voice.lang;
-    rec.interimResults = true;
-    rec.continuous = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) voice.finalText += r[0].transcript;
-        else interim += r[0].transcript;
-      }
-      showListening((voice.finalText + ' ' + interim).trim());
-    };
-    rec.onerror = (e) => {
-      voice.error = e.error;
-    };
-    rec.onend = () => {
-      setListening(false);
-      const error = voice.error;
-      voice.error = null;
-      if (voice.restart) return listen();
-      if (voice.cancelled || error === 'aborted') return;
-      if (error === 'not-allowed' || error === 'service-not-allowed') {
-        message('The extension needs permission to use your microphone (one time only).', 'warn', {
-          action: { label: 'Allow microphone', onClick: () => chrome.tabs.create({ url: chrome.runtime.getURL('mic.html') }) },
-        });
-        return;
-      }
-      if (error === 'network') return message('Dictation needs an internet connection. Please try again.', 'error');
-      if (error === 'audio-capture') return message('No microphone was found on this device.', 'error');
-      handle(voice.finalText);
-    };
+    voice.engine = engine;
+    const session = listenOnce({
+      engine,
+      lang: voice.lang,
+      transcribe: (blob) => transcribe(blob, voice.lang),
+      onText: (t) => showListening(t),
+      onPhase: (phase) => {
+        if (phase === 'transcribing') {
+          setListening(false);
+          showTranscribing();
+        }
+      },
+    });
+    voice.session = session;
     setListening(true);
     showListening();
-    try {
-      rec.start();
-    } catch {
-      setListening(false);
+    const r = await session.result;
+    if (voice.session !== session) return; // replaced (language switch)
+    voice.session = null;
+    setListening(false);
+    if (r.error === 'aborted') return;
+    if (r.error) {
+      const text = speechErrorMessage(r, { engine, cloudAvailable, extension: true });
+      if (r.error === 'not-allowed') {
+        message(text, 'warn', { action: { label: 'Allow microphone', onClick: () => chrome.tabs.create({ url: chrome.runtime.getURL('mic.html') }) } });
+      } else {
+        message(text, 'error');
+      }
+      return;
     }
+    await handle(r.text);
   }
 
   micBtn.addEventListener('click', () => {
-    if (voice.listening) voice.rec?.stop();
+    if (voice.listening) voice.session?.stop();
     else listen();
   });
 }

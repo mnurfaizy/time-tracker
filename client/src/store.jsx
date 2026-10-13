@@ -73,6 +73,7 @@ export function DataProvider({ session, setSession, children }) {
       user,
       settings,
       googleConfigured: session.googleConfigured,
+      transcribeConfigured: !!session.transcribeConfigured,
       isAdmin,
       canCreate: isAdmin || settings.membersCanCreate,
       projects,

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { q, getSettings, setSettings } from '../db.js';
 import { createSession, createToken, destroySession, hashPassword, verifyPassword, requireAuth, publicUser } from '../auth.js';
 import { googleConfigured } from '../lib/google.js';
+import { transcribeConfigured } from './transcribe.js';
 import { assertSignupAllowed, createPendingUser, PENDING_MESSAGE } from '../lib/signup.js';
 import { HttpError, bad, reqStr, email, password, str } from '../util.js';
 
@@ -99,7 +100,7 @@ r.post('/logout', async (req, res) => {
 });
 
 r.get('/me', requireAuth, async (req, res) => {
-  res.json({ user: publicUser(req.user), settings: await getSettings(), googleConfigured: googleConfigured() });
+  res.json({ user: publicUser(req.user), settings: await getSettings(), googleConfigured: googleConfigured(), transcribeConfigured: transcribeConfigured() });
 });
 
 r.put('/me', requireAuth, async (req, res) => {

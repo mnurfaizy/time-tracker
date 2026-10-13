@@ -19,7 +19,7 @@ const getProject = async (projectId) => {
   return p;
 };
 
-async function listProjects(user, onlyId = null) {
+export async function listProjects(user, onlyId = null) {
   const isAdmin = user.role === 'admin';
   const where = [isAdmin ? '1 = 1' : VISIBLE];
   const params = isAdmin ? [] : [user.id];

@@ -161,6 +161,8 @@ h2 { font-size: 18px; font-weight: 700; margin: 0 0 2px; }
 .voice-btn.block { width: 100%; height: 34px; }
 .voice-note { font-size: 12px; color: var(--text-2); padding: 8px 10px; border-radius: 10px; background: #fff; }
 .voice-msg { font-weight: 700; line-height: 1.4; }
-.voice-msg.success { color: var(--primary-text); }
-.voice-msg.warn { color: #c2861a; }
-.voice-msg.error { color: var(--danger); }
+.voice-msg.tone-success { color: var(--primary-text); }
+.voice-msg.tone-warn { color: #c2861a; }
+.voice-msg.tone-error { color: var(--danger); }
+.voice-spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--primary-soft); border-top-color: var(--primary); animation: voice-spin 0.8s linear infinite; }
+@keyframes voice-spin { to { transform: rotate(360deg); } }
