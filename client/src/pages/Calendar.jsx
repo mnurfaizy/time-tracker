@@ -45,9 +45,8 @@ function layoutDay(items) {
 }
 
 export default function CalendarPage() {
-  const { settings, user, isAdmin, users, projectById, toast, googleConfigured } = useData();
+  const { settings, user, projectById, toast, googleConfigured } = useData();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), settings.weekStart).getTime());
-  const [viewUserId, setViewUserId] = useState(user.id);
   const [entries, setEntries] = useState([]);
   const [events, setEvents] = useState([]);
   const [showEvents, setShowEvents] = useState(() => localStorage.getItem('tt.calEvents') !== 'off');
@@ -60,17 +59,17 @@ export default function CalendarPage() {
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i).getTime()), [weekStart]);
   const weekEnd = addDays(weekStart, 7).getTime();
-  const ownCalendar = viewUserId === user.id;
-  const canShowEvents = googleConfigured && user.googleConnected && ownCalendar;
+  // The Calendar is always personal: only your own time entries and your own Google Calendar.
+  const canShowEvents = googleConfigured && user.googleConnected;
 
   const load = useCallback(async () => {
     try {
-      const d = await api.get(`/entries/range?start=${weekStart}&end=${weekEnd}&userId=${viewUserId}`);
+      const d = await api.get(`/entries/range?start=${weekStart}&end=${weekEnd}`);
       setEntries(d.entries);
     } catch (err) {
       toast(err.message);
     }
-  }, [weekStart, weekEnd, viewUserId, toast]);
+  }, [weekStart, weekEnd, toast]);
 
   const loadEvents = useCallback(async () => {
     if (!canShowEvents || !showEvents) {
@@ -183,17 +182,10 @@ export default function CalendarPage() {
       <div className="page-head">
         <h1>Calendar</h1>
         <div className="calendar-toolbar">
-          {isAdmin && users.length > 1 && (
-            <select className="input select-sm" value={viewUserId} onChange={(e) => setViewUserId(Number(e.target.value))}>
-              {users.filter((u) => u.active || u.id === viewUserId).map((u) => (
-                <option key={u.id} value={u.id}>{u.id === user.id ? `${u.name} (me)` : u.name}</option>
-              ))}
-            </select>
-          )}
           {canShowEvents ? (
             <Checkbox checked={showEvents} onChange={toggleEvents} label="Google Calendar events" />
           ) : (
-            googleConfigured && ownCalendar && (
+            googleConfigured && (
               <Link to="/profile" className="link-sm"><CalendarDays size={14} /> Connect Google Calendar</Link>
             )
           )}
@@ -308,7 +300,6 @@ export default function CalendarPage() {
         <EntryModal
           entry={modal.entry}
           draft={modal.draft}
-          userId={viewUserId}
           onClose={() => setModal(null)}
           onSaved={() => {
             setModal(null);

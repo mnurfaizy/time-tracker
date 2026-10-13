@@ -101,9 +101,9 @@ async function updateEntry(entryId, fields) {
   ]);
 }
 
-// Finished entries, newest first, for the Time Tracker list.
+// Finished entries, newest first, for the Time Tracker list (always the caller's own).
 r.get('/', async (req, res) => {
-  const userId = await targetUserId(req, req.query.userId);
+  const userId = req.user.id;
   const before = Number(req.query.before) || MAX_TS;
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
   const rows = await q.all(
@@ -118,9 +118,9 @@ r.get('/running', async (req, res) => {
   res.json({ entry: row ? mapEntry(row) : null });
 });
 
-// Entries overlapping [start, end) — used by the Calendar.
+// Entries overlapping [start, end) — used by the personal Calendar (always the caller's own).
 r.get('/range', async (req, res) => {
-  const userId = await targetUserId(req, req.query.userId);
+  const userId = req.user.id;
   const start = ms(Number(req.query.start), 'start');
   const end = ms(Number(req.query.end), 'end');
   const rows = await q.all(
