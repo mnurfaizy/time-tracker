@@ -148,7 +148,7 @@ const DEFAULT_SETTINGS = {
   defaultRate: '0',
   weekStart: '1',
   timeFormat: '24',
-  membersCanCreate: '0',
+  membersCanCreate: '1',
   membersSeeTeamDashboard: '0',
   allowSignup: '1',
   signupDomain: '',
