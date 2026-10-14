@@ -52,6 +52,14 @@ export function Popover({ anchorRef, open, onClose, children, align = 'left', wi
     };
   }, [open, onClose, anchorRef]);
 
+  // The popover mounts hidden while it is positioned, which makes the browser ignore autoFocus.
+  // Once it is visible, put the cursor in its search field ([data-autofocus]) so the user can type right away.
+  const visible = !!pos;
+  useEffect(() => {
+    if (!visible || ref.current?.contains(document.activeElement)) return;
+    ref.current?.querySelector('[data-autofocus]')?.focus();
+  }, [visible]);
+
   if (!open) return null;
   return createPortal(
     <div

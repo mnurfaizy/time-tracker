@@ -82,7 +82,7 @@ export function ProjectPicker({ projectId, taskId, onChange, fallback, emptyLabe
       <Popover anchorRef={ref} open={open} onClose={close} width={380} className="picker">
         <div className="picker-search">
           <Search size={16} />
-          <input autoFocus placeholder="Search project or client" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input autoFocus data-autofocus placeholder="Search project or client" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="picker-list">
           {!search && (
@@ -278,6 +278,7 @@ export function TagPicker({ tagIds, onChange, showNames = true }) {
           <Search size={16} />
           <input
             autoFocus
+            data-autofocus
             placeholder="Add/Search tags"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -354,7 +355,7 @@ export function FilterDropdown({ label, options, value, onChange, withNone }) {
       <Popover anchorRef={ref} open={open} onClose={close} width={260} className="picker">
         <div className="picker-search">
           <Search size={16} />
-          <input autoFocus placeholder={`Search ${label}`} value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input autoFocus data-autofocus placeholder={`Search ${label}`} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="picker-list">
           <div className="picker-item">
