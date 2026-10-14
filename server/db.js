@@ -149,7 +149,7 @@ const DEFAULT_SETTINGS = {
   weekStart: '1',
   timeFormat: '24',
   membersCanCreate: '1',
-  membersSeeTeamDashboard: '0',
+  membersSeeTeamDashboard: '1',
   allowSignup: '1',
   signupDomain: '',
   autoApproveDomain: '1',

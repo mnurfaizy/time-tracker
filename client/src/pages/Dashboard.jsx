@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, qs } from '../api.js';
 import { useData, useMoney } from '../store.jsx';
 import { DateRangePicker } from '../components/DateRangePicker.jsx';
@@ -73,6 +73,8 @@ export default function Dashboard() {
           <DateRangePicker value={range} onChange={setRange} weekStart={settings.weekStart} />
         </div>
       </div>
+
+      {canSeeTeam && <TeamNow />}
 
       {!data ? (
         <div className="center-pad"><Spinner /></div>
@@ -166,6 +168,120 @@ export default function Dashboard() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function timeAgo(ms, now) {
+  const m = Math.round((now - ms) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'yesterday' : `${d}d ago`;
+}
+
+function ProjectTag({ entry }) {
+  if (!entry.projectName) return <span className="muted">No project</span>;
+  return (
+    <span className="team-now-project" style={{ color: entry.projectColor ?? undefined }}>
+      <span className="dot" style={{ background: entry.projectColor ?? '#999' }} />
+      {entry.taskName ? `${entry.projectName}: ${entry.taskName}` : entry.projectName}
+    </span>
+  );
+}
+
+/** Who is tracking what right now, like Clockify's team activity. Refreshes every 30 s and on focus. */
+function TeamNow() {
+  const { user } = useData();
+  const [members, setMembers] = useState(null);
+  const [offset, setOffset] = useState(0); // server clock minus ours, so elapsed times line up
+  const [now, setNow] = useState(Date.now());
+
+  const load = useCallback(() => {
+    api
+      .get('/reports/team-now')
+      .then((d) => {
+        setMembers(d.members);
+        if (d.now) setOffset(d.now - Date.now());
+      })
+      .catch(() => setMembers((m) => m ?? []));
+  }, []);
+
+  useEffect(() => {
+    load();
+    const poll = setInterval(load, 30000);
+    const onFocus = () => document.visibilityState === 'visible' && load();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(poll);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [load]);
+
+  const anyRunning = members?.some((m) => m.running);
+  useEffect(() => {
+    if (!anyRunning) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [anyRunning]);
+
+  if (!members) return null;
+  const serverNow = now + offset;
+  const sorted = [...members].sort((a, b) => {
+    if (!!a.running !== !!b.running) return a.running ? -1 : 1;
+    if (a.running) return a.running.start - b.running.start;
+    return (b.last?.end ?? 0) - (a.last?.end ?? 0);
+  });
+  const runningCount = members.filter((m) => m.running).length;
+
+  return (
+    <div className="card team-now">
+      <div className="team-now-head">
+        <div className="card-title">Team right now</div>
+        <span className={`team-now-count ${runningCount ? 'on' : ''}`}>
+          {runningCount ? `${runningCount} tracking` : 'Nobody tracking'}
+        </span>
+      </div>
+      <ul className="team-now-list">
+        {sorted.map(({ user: u, running, last }) => (
+          <li key={u.id} className={running ? 'is-running' : ''}>
+            <div className="team-now-avatar">
+              <Avatar name={u.name} size={34} />
+              {running && <span className="team-now-live" title="Tracking now" />}
+            </div>
+            <div className="team-now-body">
+              <div className="team-now-name">
+                {u.name}
+                {u.id === user.id && <span className="muted"> (you)</span>}
+              </div>
+              {running ? (
+                <div className="team-now-line">
+                  <span className="team-now-desc">{running.description || '(no description)'}</span>
+                  <ProjectTag entry={running} />
+                </div>
+              ) : last ? (
+                <div className="team-now-line muted">
+                  <span className="team-now-desc">Last: {last.description || '(no description)'}</span>
+                  <ProjectTag entry={last} />
+                </div>
+              ) : (
+                <div className="team-now-line muted">No time tracked yet</div>
+              )}
+            </div>
+            <div className="team-now-time">
+              {running ? (
+                <b className="team-now-elapsed">{formatDuration(serverNow - running.start)}</b>
+              ) : last ? (
+                <span className="muted small">{timeAgo(last.end, serverNow)}</span>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

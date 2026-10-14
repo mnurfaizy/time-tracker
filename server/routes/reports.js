@@ -83,6 +83,34 @@ r.get('/entries', async (req, res) => {
   res.json({ entries: await reportEntries(req.user, readFilters(req.query), { teamView: req.query.view === 'dashboard' }) });
 });
 
+/**
+ * "Team right now" on the Dashboard: every active member with their running timer (if any) and their
+ * last finished entry. Same visibility as the team Dashboard.
+ */
+r.get('/team-now', async (req, res) => {
+  const seesTeam = req.user.role === 'admin' || (await getSettings()).membersSeeTeamDashboard;
+  if (!seesTeam) return res.json({ members: [] });
+  const [users, running, last] = await Promise.all([
+    q.all('SELECT id, name, email FROM users WHERE active = 1 AND pending = 0 ORDER BY name COLLATE NOCASE'),
+    q.all(`${ENTRY_SELECT} WHERE e.end_at IS NULL`),
+    q.all(
+      `${ENTRY_SELECT} WHERE e.id IN (
+         SELECT (SELECT t.id FROM time_entries t WHERE t.user_id = x.id AND t.end_at IS NOT NULL ORDER BY t.end_at DESC, t.id DESC LIMIT 1)
+         FROM users x WHERE x.active = 1 AND x.pending = 0)`,
+    ),
+  ]);
+  const runningBy = new Map(running.map((row) => [row.user_id, mapEntry(row)]));
+  const lastBy = new Map(last.map((row) => [row.user_id, mapEntry(row)]));
+  res.json({
+    now: Date.now(),
+    members: users.map((u) => ({
+      user: { id: u.id, name: u.name, email: u.email },
+      running: runningBy.get(u.id) ?? null,
+      last: lastBy.get(u.id) ?? null,
+    })),
+  });
+});
+
 const groupParam = (v, fallback) => (GROUP_OPTIONS.some(([k]) => k === v) ? v : fallback);
 const money = (n) => (Math.round(n * 100) / 100).toFixed(2);
 

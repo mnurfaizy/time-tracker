@@ -729,3 +729,22 @@ select.filter-btn { padding-right: 10px; }
   .detailed-table th:nth-child(3), .detailed-table td:nth-child(3) { display: none; }
   .card.pad-lg { padding: 20px; }
 }
+
+/* ---------- Team right now (Dashboard) ---------- */
+.team-now { margin-bottom: 20px; }
+.team-now-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-right: 20px; }
+.team-now-count { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: var(--pill); background: var(--surface-muted); color: var(--text-2); }
+.team-now-count.on { background: var(--primary-soft); color: var(--primary-text); }
+.team-now-list { list-style: none; margin: 0; padding: 0 20px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 4px 20px; max-height: 340px; overflow-y: auto; }
+.team-now-list li { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); min-width: 0; }
+.team-now-avatar { position: relative; flex: none; }
+.team-now-live { position: absolute; right: -1px; bottom: -1px; width: 11px; height: 11px; border-radius: 50%; background: var(--primary); border: 2px solid #fff; animation: team-live 1.6s ease-in-out infinite; }
+@keyframes team-live { 0%, 100% { box-shadow: 0 0 0 0 #3e8e5e55; } 50% { box-shadow: 0 0 0 4px #3e8e5e00; } }
+.team-now-body { flex: 1; min-width: 0; }
+.team-now-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-now-line { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
+.team-now-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.team-now-project { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-now-project .dot { margin-right: 5px; }
+.team-now-time { flex: none; text-align: right; }
+.team-now-elapsed { font-variant-numeric: tabular-nums; color: var(--primary-text); }
