@@ -1,6 +1,7 @@
 import { api, getToken, updateBadge } from './api.js';
 
-const SYNC_EVERY_MS = 3 * 60 * 1000;
+// The popup always loads fresh data; this only keeps the toolbar badge in sync with changes made elsewhere.
+const SYNC_EVERY_MS = 10 * 60 * 1000;
 
 /** Fetches the running timer from the server (or reuses the cached one between syncs). */
 async function refresh(force = false) {

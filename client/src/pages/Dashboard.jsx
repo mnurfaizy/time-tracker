@@ -211,7 +211,7 @@ function TeamNow() {
 
   useEffect(() => {
     load();
-    const poll = setInterval(load, 30000);
+    const poll = setInterval(() => document.visibilityState === 'visible' && load(), 30000);
     const onFocus = () => document.visibilityState === 'visible' && load();
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);

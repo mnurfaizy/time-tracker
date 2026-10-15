@@ -61,7 +61,7 @@ export function Layout() {
   useEffect(() => {
     if (!isAdmin) return undefined;
     reloadUsers().catch(() => {});
-    const t = setInterval(() => reloadUsers().catch(() => {}), 2 * 60 * 1000);
+    const t = setInterval(() => document.visibilityState === 'visible' && reloadUsers().catch(() => {}), 2 * 60 * 1000);
     return () => clearInterval(t);
   }, [isAdmin, reloadUsers, location.pathname]);
 
