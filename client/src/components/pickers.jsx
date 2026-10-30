@@ -144,7 +144,7 @@ export function ProjectPicker({ projectIds, taskId, onChange, fallback, emptyLab
                 const isOpen = forceOpen || expanded[p.id];
                 return (
                   <div key={p.id}>
-                    <div className={`picker-item ${checked && draft.length === 1 && draftTask == null ? 'selected' : ''}`}>
+                    <div className={`picker-item picker-project ${checked && draft.length === 1 && draftTask == null ? 'selected' : ''}`}>
                       <Checkbox checked={checked} onChange={(on) => toggleDraft(p, on)} />
                       <button type="button" className="picker-item-main" onClick={() => commit([p.id], null)} title="Track just this project" style={{ color: p.color }}>
                         <span className="dot" style={{ background: p.color }} />
