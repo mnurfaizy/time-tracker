@@ -72,6 +72,9 @@ export function DataProvider({ session, setSession, children }) {
     return {
       user,
       settings,
+      workspace: session.workspace,
+      workspaces: session.workspaces ?? [session.workspace],
+      canCreateWorkspace: !!session.canCreateWorkspace,
       googleConfigured: session.googleConfigured,
       transcribeConfigured: !!session.transcribeConfigured,
       isAdmin,

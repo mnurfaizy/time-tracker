@@ -2,6 +2,7 @@ import { createClient } from '@libsql/client';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { slugify, slugProblem } from '../shared/workspace.js';
 
 // Turso (cloud) when TURSO_DATABASE_URL is set, otherwise a local SQLite file.
 const remoteUrl = process.env.TURSO_DATABASE_URL;
@@ -20,9 +21,25 @@ export const db = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN ||
 export const isRemote = !!remoteUrl;
 
 const SCHEMA = `
+-- Single-workspace settings from older versions; only read once to seed the main workspace.
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT
+);
+
+-- The lowest id is the main workspace: it keeps the root links (/tracker), the others live at /slug/...
+CREATE TABLE IF NOT EXISTS workspaces (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspace_settings (
+  workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value TEXT,
+  PRIMARY KEY (workspace_id, key)
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -39,6 +56,19 @@ CREATE TABLE IF NOT EXISTS users (
   created_at INTEGER NOT NULL
 );
 
+-- Role, active and pending live per workspace here; the same columns on users only hold the
+-- pre-workspace values the migration copied from.
+CREATE TABLE IF NOT EXISTS workspace_members (
+  workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+  active INTEGER NOT NULL DEFAULT 1,
+  pending INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_members_user ON workspace_members(user_id);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -47,6 +77,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE TABLE IF NOT EXISTS clients (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   note TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
@@ -55,6 +86,7 @@ CREATE TABLE IF NOT EXISTS clients (
 
 CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
   color TEXT NOT NULL DEFAULT '#03A9F4',
@@ -82,13 +114,16 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE TABLE IF NOT EXISTS tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  workspace_id INTEGER NOT NULL,
+  name TEXT NOT NULL COLLATE NOCASE,
   archived INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  UNIQUE (workspace_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS time_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   description TEXT NOT NULL DEFAULT '',
   project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
@@ -103,8 +138,6 @@ CREATE TABLE IF NOT EXISTS time_entries (
 CREATE INDEX IF NOT EXISTS idx_entries_user_start ON time_entries(user_id, start_at);
 CREATE INDEX IF NOT EXISTS idx_entries_start ON time_entries(start_at);
 CREATE INDEX IF NOT EXISTS idx_entries_project ON time_entries(project_id);
--- At most one running timer per user.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_running ON time_entries(user_id) WHERE end_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS entry_tags (
   entry_id INTEGER NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
@@ -124,9 +157,74 @@ CREATE TABLE IF NOT EXISTS oauth_states (
   state TEXT PRIMARY KEY,
   user_id INTEGER,
   mode TEXT NOT NULL,
+  workspace_id INTEGER,
   created_at INTEGER NOT NULL
 );
 `;
+
+// Created after the migrations, because older databases only get workspace_id columns there.
+const WORKSPACE_INDEXES = `
+CREATE INDEX IF NOT EXISTS idx_clients_ws ON clients(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_projects_ws ON projects(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_entries_ws_user_start ON time_entries(workspace_id, user_id, start_at);
+CREATE INDEX IF NOT EXISTS idx_entries_ws_start ON time_entries(workspace_id, start_at);
+DROP INDEX IF EXISTS idx_entries_running;
+-- At most one running timer per user in each workspace.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_running_ws ON time_entries(workspace_id, user_id) WHERE end_at IS NULL;
+`;
+
+const columns = async (table) => (await db.execute(`PRAGMA table_info(${table})`)).rows.map((c) => c.name);
+
+/**
+ * Upgrades a single-workspace database: the existing team, settings and data become the main
+ * workspace (id 1), so nothing moves for people already using it. Every step is idempotent.
+ */
+async function migrateToWorkspaces() {
+  if (!(await q.get('SELECT 1 FROM workspaces LIMIT 1')) && (await q.get('SELECT 1 FROM users LIMIT 1'))) {
+    const legacy = Object.fromEntries((await q.all('SELECT key, value FROM settings')).map((r) => [r.key, r.value]));
+    const name = legacy.workspaceName || DEFAULT_SETTINGS.workspaceName;
+    const slug = slugProblem(slugify(name)) ? 'main' : slugify(name);
+    await q.batch([
+      ['INSERT INTO workspaces (id, name, slug, created_at) VALUES (1, ?, ?, ?)', name, slug, Date.now()],
+      ['INSERT INTO workspace_members (workspace_id, user_id, role, active, pending, created_at) SELECT 1, id, role, active, pending, created_at FROM users'],
+      ["INSERT INTO workspace_settings (workspace_id, key, value) SELECT 1, key, value FROM settings WHERE key <> 'workspaceName'"],
+    ]);
+  }
+  const main = (await q.get('SELECT MIN(id) AS id FROM workspaces')).id ?? 1;
+
+  for (const table of ['clients', 'projects', 'time_entries']) {
+    if ((await columns(table)).includes('workspace_id')) continue;
+    await q.batch([
+      [`ALTER TABLE ${table} ADD COLUMN workspace_id INTEGER NOT NULL DEFAULT 0`],
+      [`UPDATE ${table} SET workspace_id = ?`, main],
+    ]);
+  }
+
+  // Tag names were unique across the whole server, now per workspace, which needs a rebuilt table.
+  // Dropping the old table can cascade into entry_tags, so those links are kept aside and restored.
+  if (!(await columns('tags')).includes('workspace_id')) {
+    await q.batch([
+      ['DROP TABLE IF EXISTS entry_tags_keep'],
+      ['CREATE TABLE entry_tags_keep AS SELECT entry_id, tag_id FROM entry_tags'],
+      ['DROP TABLE IF EXISTS tags_new'],
+      [`CREATE TABLE tags_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          workspace_id INTEGER NOT NULL,
+          name TEXT NOT NULL COLLATE NOCASE,
+          archived INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          UNIQUE (workspace_id, name)
+        )`],
+      ['INSERT INTO tags_new (id, workspace_id, name, archived, created_at) SELECT id, ?, name, archived, created_at FROM tags', main],
+      ['DROP TABLE tags'],
+      ['ALTER TABLE tags_new RENAME TO tags'],
+      ['INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) SELECT entry_id, tag_id FROM entry_tags_keep'],
+      ['DROP TABLE entry_tags_keep'],
+    ]);
+  }
+
+  if (!(await columns('oauth_states')).includes('workspace_id')) await db.execute('ALTER TABLE oauth_states ADD COLUMN workspace_id INTEGER');
+}
 
 export async function initDb() {
   if (!isRemote) await db.executeMultiple('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
@@ -134,6 +232,8 @@ export async function initDb() {
   // Migrations for databases created by older versions.
   const userCols = (await db.execute('PRAGMA table_info(users)')).rows.map((c) => c.name);
   if (!userCols.includes('pending')) await db.execute('ALTER TABLE users ADD COLUMN pending INTEGER NOT NULL DEFAULT 0');
+  await migrateToWorkspaces();
+  await db.executeMultiple(WORKSPACE_INDEXES);
   // Entries created before multi-project support get their primary project into the junction.
   await db.execute(`
     INSERT INTO entry_projects (entry_id, project_id)
@@ -157,7 +257,7 @@ export const q = {
   batch: (stmts) => db.batch(stmts.map(([sql, ...params]) => ({ sql, args: bind(params) })), 'write'),
 };
 
-const DEFAULT_SETTINGS = {
+export const DEFAULT_SETTINGS = {
   workspaceName: 'My Workspace',
   currency: 'IDR',
   defaultRate: '0',
@@ -170,15 +270,20 @@ const DEFAULT_SETTINGS = {
   autoApproveDomain: '1',
 };
 
-// Settings only change through setSettings in this process, so they are cached in memory.
-let settingsCache = null;
+// Settings only change through setSettings in this process, so they are cached in memory per workspace.
+const settingsCache = new Map();
 
-export async function getSettings() {
-  if (settingsCache) return settingsCache;
+export async function getSettings(workspaceId) {
+  const cached = settingsCache.get(workspaceId);
+  if (cached) return cached;
+  const [ws, rows] = await Promise.all([
+    q.get('SELECT name FROM workspaces WHERE id = ?', workspaceId),
+    q.all('SELECT key, value FROM workspace_settings WHERE workspace_id = ?', workspaceId),
+  ]);
   const raw = { ...DEFAULT_SETTINGS };
-  for (const row of await q.all('SELECT key, value FROM settings')) if (row.key in raw) raw[row.key] = row.value;
-  settingsCache = {
-    workspaceName: raw.workspaceName,
+  for (const row of rows) if (row.key in raw) raw[row.key] = row.value;
+  const settings = {
+    workspaceName: ws?.name ?? raw.workspaceName,
     currency: raw.currency,
     defaultRate: Number(raw.defaultRate) || 0,
     weekStart: Number(raw.weekStart) === 0 ? 0 : 1,
@@ -189,16 +294,30 @@ export async function getSettings() {
     signupDomain: raw.signupDomain || '',
     autoApproveDomain: raw.autoApproveDomain === '1',
   };
-  return settingsCache;
+  settingsCache.set(workspaceId, settings);
+  return settings;
 }
 
-export async function setSettings(values) {
+/** Statements that write `values` as a workspace's settings (the name goes to workspaces.name). */
+export function settingsStatements(workspaceId, values) {
   const stmts = [];
   for (const [key, value] of Object.entries(values)) {
     if (!(key in DEFAULT_SETTINGS) || value === undefined) continue;
+    if (key === 'workspaceName') {
+      stmts.push(['UPDATE workspaces SET name = ? WHERE id = ?', String(value), workspaceId]);
+      continue;
+    }
     const v = typeof value === 'boolean' ? (value ? '1' : '0') : String(value);
-    stmts.push(['INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, v]);
+    stmts.push([
+      'INSERT INTO workspace_settings (workspace_id, key, value) VALUES (?, ?, ?) ON CONFLICT(workspace_id, key) DO UPDATE SET value = excluded.value',
+      workspaceId, key, v,
+    ]);
   }
+  return stmts;
+}
+
+export async function setSettings(workspaceId, values) {
+  const stmts = settingsStatements(workspaceId, values);
   if (stmts.length) await q.batch(stmts);
-  settingsCache = null;
+  settingsCache.delete(workspaceId);
 }

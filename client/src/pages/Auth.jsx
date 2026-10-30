@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../api.js';
+import { api, apiLink } from '../api.js';
 import { Logo } from '../components/Layout.jsx';
 
 const GOOGLE_ERRORS = {
@@ -56,7 +56,7 @@ export function Login({ boot, onDone }) {
         {pending && <PendingNotice />}
         {boot.googleLogin && (
           <>
-            <a className="btn btn-google" href="/api/google/login"><GoogleIcon /> Continue with Google</a>
+            <a className="btn btn-google" href={apiLink('/api/google/login')}><GoogleIcon /> Continue with Google</a>
             <div className="auth-divider"><span>OR</span></div>
           </>
         )}
@@ -119,7 +119,7 @@ export function Signup({ boot }) {
           <>
             {boot.googleLogin && (
               <>
-                <a className="btn btn-google" href="/api/google/login"><GoogleIcon /> Sign up with Google</a>
+                <a className="btn btn-google" href={apiLink('/api/google/login')}><GoogleIcon /> Sign up with Google</a>
                 <div className="auth-divider"><span>OR</span></div>
               </>
             )}

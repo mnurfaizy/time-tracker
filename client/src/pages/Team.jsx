@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Search, RefreshCw } from 'lucide-react';
-import { api } from '../api.js';
+import { api, basename } from '../api.js';
 import { useData } from '../store.jsx';
 import { KebabMenu, Modal, Field } from '../components/ui.jsx';
 import { Avatar } from '../components/Layout.jsx';
@@ -162,12 +162,22 @@ function MemberModal({ modal, onClose, onSaved }) {
     e.preventDefault();
     setBusy(true);
     try {
-      if (modal.mode === 'add') await api.post('/users', form);
+      const loginUrl = `${window.location.origin}${basename}/`;
+      let existing = false;
+      if (modal.mode === 'add') ({ existing } = await api.post('/users', form));
       else if (modal.mode === 'edit') await api.put(`/users/${u.id}`, { name: form.name, email: form.email, role: form.role });
       else await api.put(`/users/${u.id}/password`, { password: form.password });
-      if (modal.mode !== 'edit') {
+      if (existing) {
+        // Already has an account (e.g. in another workspace): joins with the login they already use.
         try {
-          await navigator.clipboard.writeText(`Email: ${form.email || u.email}\nPassword: ${form.password}\nLogin: ${window.location.origin}`);
+          await navigator.clipboard.writeText(`You now have access to this workspace: ${loginUrl}\nLog in with your existing account (${form.email}).`);
+          toast('This email already has an account, so it was added here. They keep their current password. Link copied to clipboard.', 'success');
+        } catch {
+          toast('This email already has an account, so it was added here. They keep their current password.', 'success');
+        }
+      } else if (modal.mode !== 'edit') {
+        try {
+          await navigator.clipboard.writeText(`Email: ${form.email || u.email}\nPassword: ${form.password}\nLogin: ${loginUrl}`);
           toast('Saved. Login details copied to clipboard — share them with the member.', 'success');
         } catch {
           toast('Saved. Remember to share the password with the member.', 'success');
@@ -196,7 +206,9 @@ function MemberModal({ modal, onClose, onSaved }) {
         {modal.mode !== 'password' && (
           <>
             <Field label="Full name"><input className="input" value={form.name} onChange={set('name')} required autoFocus /></Field>
-            <Field label="Email"><input className="input" type="email" value={form.email} onChange={set('email')} required /></Field>
+            <Field label="Email" hint={modal.mode === 'add' ? 'Already has an account in another workspace? They are simply added here and keep their own password.' : undefined}>
+              <input className="input" type="email" value={form.email} onChange={set('email')} required />
+            </Field>
             <Field label="Role">
               <select className="input" value={form.role} onChange={set('role')} disabled={u?.id === me.id}>
                 <option value="member">Member — tracks own time, sees own reports</option>

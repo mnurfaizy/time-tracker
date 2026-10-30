@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { q, getSettings } from './db.js';
 import { HttpError } from './util.js';
+import { MEMBERSHIP_COLUMNS, usableWorkspaces, wantedSlug, pickWorkspace } from './lib/workspaces.js';
 
 const COOKIE = 'tt_session';
 const TTL = 30 * 24 * 3600 * 1000;
@@ -70,28 +71,56 @@ export async function deleteUserSessions(userId) {
   await q.run('DELETE FROM sessions WHERE user_id = ?', userId);
 }
 
-/** Returns the logged-in user row (or null). Extends the session when it is past half-life. */
+/**
+ * Returns the logged-in user row (or null), with `workspaces`: the workspaces they can work in.
+ * Extends the session when it is past half-life.
+ */
 export async function currentUser(req, res) {
   const bearer = readBearer(req);
   const token = bearer || readCookie(req, COOKIE);
   if (!token) return null;
   const hash = sha256(token);
   const row = await q.get(
-    'SELECT u.*, s.expires_at AS session_expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?',
+    `SELECT u.*, s.expires_at AS session_expires, ${MEMBERSHIP_COLUMNS}
+     FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
     hash,
   );
-  if (!row || row.session_expires < Date.now() || !row.active) return null;
+  if (!row || row.session_expires < Date.now()) return null;
   if (res && row.session_expires - Date.now() < TTL / 2) {
     await q.run('UPDATE sessions SET expires_at = ? WHERE token_hash = ?', Date.now() + TTL, hash);
     if (!bearer) setCookie(req, res, token);
   }
-  return row;
+  return { ...row, workspaces: usableWorkspaces(row) };
+}
+
+/**
+ * Puts the request inside a workspace: req.ws, and req.user with that workspace's role (so
+ * `req.user.role === 'admin'` means admin of this workspace) and `wsId`.
+ * Lenient mode falls back to the default workspace when the requested one is not available.
+ */
+function enterWorkspace(req, user, { lenient = false } = {}) {
+  const slug = wantedSlug(req);
+  const ws = pickWorkspace(user.workspaces, slug) ?? (lenient ? pickWorkspace(user.workspaces, null) : null);
+  if (!ws) {
+    if (slug && user.workspaces.length) throw new HttpError(403, 'You are not a member of this workspace');
+    throw new HttpError(403, 'Your account is not active in any workspace. Please contact your workspace admin.');
+  }
+  req.ws = ws;
+  req.user = { ...user, role: ws.role, active: 1, pending: 0, wsId: ws.id };
 }
 
 export async function requireAuth(req, res, next) {
   const user = await currentUser(req, res);
   if (!user) throw new HttpError(401, 'Please log in');
-  req.user = user;
+  enterWorkspace(req, user);
+  next();
+}
+
+/** Like requireAuth, but an unknown workspace falls back to the user's default (used by /auth/me). */
+export async function requireAuthAnyWorkspace(req, res, next) {
+  const user = await currentUser(req, res);
+  if (!user) throw new HttpError(401, 'Please log in');
+  enterWorkspace(req, user, { lenient: true });
   next();
 }
 
@@ -102,7 +131,7 @@ export function requireAdmin(req, res, next) {
 
 /** Admins always; members only when the workspace allows it. */
 export async function requireCreator(req, res, next) {
-  if (req.user?.role !== 'admin' && !(await getSettings()).membersCanCreate) {
+  if (req.user?.role !== 'admin' && !(await getSettings(req.user.wsId)).membersCanCreate) {
     throw new HttpError(403, 'Only workspace admins can create this');
   }
   next();

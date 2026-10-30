@@ -31,11 +31,11 @@ function readFilters(query) {
  * team Dashboard when the workspace allows it (`teamView`).
  */
 export async function reportEntries(user, f, { teamView = false } = {}) {
-  const where = ['e.end_at IS NOT NULL', 'e.start_at >= ?', 'e.start_at < ?'];
-  const params = [f.start, f.end];
+  const where = ['e.workspace_id = ?', 'e.end_at IS NOT NULL', 'e.start_at >= ?', 'e.start_at < ?'];
+  const params = [user.wsId, f.start, f.end];
   const marks = (list) => list.map(() => '?').join(',');
 
-  const seesTeam = user.role === 'admin' || (teamView && (await getSettings()).membersSeeTeamDashboard);
+  const seesTeam = user.role === 'admin' || (teamView && (await getSettings(user.wsId)).membersSeeTeamDashboard);
   if (!seesTeam) {
     where.push('e.user_id = ?');
     params.push(user.id);
@@ -99,15 +99,23 @@ r.get('/entries', async (req, res) => {
  * last finished entry. Same visibility as the team Dashboard.
  */
 r.get('/team-now', async (req, res) => {
-  const seesTeam = req.user.role === 'admin' || (await getSettings()).membersSeeTeamDashboard;
+  const seesTeam = req.user.role === 'admin' || (await getSettings(req.ws.id)).membersSeeTeamDashboard;
   if (!seesTeam) return res.json({ members: [] });
+  const ws = req.ws.id;
   const [users, running, last] = await Promise.all([
-    q.all('SELECT id, name, email FROM users WHERE active = 1 AND pending = 0 ORDER BY name COLLATE NOCASE'),
-    q.all(`${ENTRY_SELECT} WHERE e.end_at IS NULL`),
+    q.all(
+      `SELECT u.id, u.name, u.email FROM workspace_members m JOIN users u ON u.id = m.user_id
+       WHERE m.workspace_id = ? AND m.active = 1 AND m.pending = 0 ORDER BY u.name COLLATE NOCASE`,
+      ws,
+    ),
+    q.all(`${ENTRY_SELECT} WHERE e.workspace_id = ? AND e.end_at IS NULL`, ws),
     q.all(
       `${ENTRY_SELECT} WHERE e.id IN (
-         SELECT (SELECT t.id FROM time_entries t WHERE t.user_id = x.id AND t.end_at IS NOT NULL ORDER BY t.end_at DESC, t.id DESC LIMIT 1)
-         FROM users x WHERE x.active = 1 AND x.pending = 0)`,
+         SELECT (SELECT t.id FROM time_entries t
+                 WHERE t.workspace_id = m.workspace_id AND t.user_id = m.user_id AND t.end_at IS NOT NULL
+                 ORDER BY t.end_at DESC, t.id DESC LIMIT 1)
+         FROM workspace_members m WHERE m.workspace_id = ? AND m.active = 1 AND m.pending = 0)`,
+      ws,
     ),
   ]);
   const runningBy = new Map(running.map((row) => [row.user_id, mapEntry(row)]));
@@ -130,10 +138,10 @@ r.get('/export', async (req, res) => {
   const f = readFilters(req.query);
   const tz = validTimeZone(req.query.tz) ? req.query.tz : 'UTC';
   const type = ['detailed', 'summary', 'weekly'].includes(req.query.type) ? req.query.type : 'detailed';
-  const settings = await getSettings();
+  const settings = await getSettings(req.ws.id);
   const cur = settings.currency;
   const entries = (await reportEntries(req.user, f)).reverse(); // chronological
-  const tagNames = new Map((await q.all('SELECT id, name FROM tags')).map((t) => [t.id, t.name]));
+  const tagNames = new Map((await q.all('SELECT id, name FROM tags WHERE workspace_id = ?', req.ws.id)).map((t) => [t.id, t.name]));
   const ctx = { tz, defaultRate: settings.defaultRate, tagName: (tagId) => tagNames.get(tagId) ?? '' };
   const rows = [];
 

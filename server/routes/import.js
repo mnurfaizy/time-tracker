@@ -42,9 +42,9 @@ r.post('/clockify-projects', async (req, res) => {
   const now = Date.now();
 
   const [clients, projects, tasks] = await Promise.all([
-    q.all('SELECT id, name FROM clients'),
-    q.all('SELECT id, name, client_id FROM projects'),
-    q.all('SELECT id, name, project_id FROM tasks'),
+    q.all('SELECT id, name FROM clients WHERE workspace_id = ?', req.ws.id),
+    q.all('SELECT id, name, client_id FROM projects WHERE workspace_id = ?', req.ws.id),
+    q.all('SELECT t.id, t.name, t.project_id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.workspace_id = ?', req.ws.id),
   ]);
   const clientIds = new Map(clients.map((c) => [key(c.name), c.id]));
   const projectIds = new Map(projects.map((p) => [`${key(p.name)}|${p.client_id ?? 0}`, p.id]));
@@ -57,7 +57,7 @@ r.post('/clockify-projects', async (req, res) => {
     if (name && !clientIds.has(key(name)) && !newClients.some((n) => key(n) === key(name))) newClients.push(name);
   }
   if (!dryRun && newClients.length) {
-    const results = await runChunks(newClients.map((name) => ['INSERT INTO clients (name, created_at) VALUES (?, ?) RETURNING id', name, now]));
+    const results = await runChunks(newClients.map((name) => ['INSERT INTO clients (workspace_id, name, created_at) VALUES (?, ?, ?) RETURNING id', req.ws.id, name, now]));
     newClients.forEach((name, i) => clientIds.set(key(name), results[i].rows[0].id));
   }
 
@@ -106,9 +106,9 @@ r.post('/clockify-projects', async (req, res) => {
   const toCreate = newProjects.filter((p) => !p.onlyTasks);
   const created = await runChunks(
     toCreate.map((p) => [
-      `INSERT INTO projects (name, client_id, color, billable, hourly_rate, is_public, archived, note, created_at)
-       VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?) RETURNING id`,
-      p.name, p.clientId, colorFor(p.name), billable, p.isPublic, p.archived, p.note, now,
+      `INSERT INTO projects (workspace_id, name, client_id, color, billable, hourly_rate, is_public, archived, note, created_at)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?) RETURNING id`,
+      req.ws.id, p.name, p.clientId, colorFor(p.name), billable, p.isPublic, p.archived, p.note, now,
     ]),
   );
   toCreate.forEach((p, i) => {

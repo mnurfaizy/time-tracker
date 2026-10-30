@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CalendarDays, CircleCheck, TriangleAlert } from 'lucide-react';
-import { api } from '../api.js';
+import { api, apiLink } from '../api.js';
 import { useData } from '../store.jsx';
 import { Field, Toggle } from '../components/ui.jsx';
 import { ExtensionCard } from '../components/ExtensionCard.jsx';
@@ -117,7 +117,7 @@ export default function Profile() {
               Connect your Google account to see your meetings in the Calendar page, turn them into time entries, and optionally
               copy your time entries into Google Calendar.
             </p>
-            <a className="btn btn-outline" href="/api/google/connect"><CalendarDays size={16} /> Connect Google Calendar</a>
+            <a className="btn btn-outline" href={apiLink('/api/google/connect')}><CalendarDays size={16} /> Connect Google Calendar</a>
           </>
         )}
       </div>

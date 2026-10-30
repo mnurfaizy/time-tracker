@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useParams, Navigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Download, FileText } from 'lucide-react';
-import { api, qs } from '../api.js';
+import { api, apiLink, qs } from '../api.js';
 import { useData, useMoney } from '../store.jsx';
 import { DateRangePicker } from '../components/DateRangePicker.jsx';
 import { FilterDropdown } from '../components/pickers.jsx';
@@ -188,7 +188,7 @@ function ExportMenu({ tab, query }) {
     const g1 = localStorage.getItem(`tt.${tab}.g1`) || (tab === 'weekly' ? (isAdmin ? 'user' : 'project') : 'project');
     const g2 = localStorage.getItem(`tt.${tab}.g2`) || 'description';
     const extra = qs({ type: tab, group1: g1, group2: g2 });
-    window.location.href = `/api/reports/export?${query}&${extra}`;
+    window.location.href = apiLink(`/api/reports/export?${query}&${extra}`);
     close();
   };
   return (

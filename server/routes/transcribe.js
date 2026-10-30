@@ -43,14 +43,14 @@ async function vocabulary(user) {
   const since = Date.now() - 90 * 86_400_000;
   const [descriptions, used, all] = await Promise.all([
     q.all(
-      `SELECT description FROM time_entries WHERE user_id = ? AND start_at > ? AND description <> ''
+      `SELECT description FROM time_entries WHERE workspace_id = ? AND user_id = ? AND start_at > ? AND description <> ''
        GROUP BY description COLLATE NOCASE ORDER BY MAX(start_at) DESC LIMIT 15`,
-      user.id, since,
+      user.wsId, user.id, since,
     ),
     q.all(
       `SELECT p.id FROM time_entries e JOIN projects p ON p.id = e.project_id
-       WHERE e.user_id = ? AND e.start_at > ? GROUP BY p.id ORDER BY MAX(e.start_at) DESC LIMIT 25`,
-      user.id, since,
+       WHERE e.workspace_id = ? AND e.user_id = ? AND e.start_at > ? GROUP BY p.id ORDER BY MAX(e.start_at) DESC LIMIT 25`,
+      user.wsId, user.id, since,
     ),
     listProjects(user),
   ]);

@@ -17,12 +17,12 @@ async function targetUserId(req, raw) {
   const uid = id(raw);
   if (!uid || uid === req.user.id) return req.user.id;
   if (req.user.role !== 'admin') throw forbidden();
-  if (!(await q.get('SELECT 1 FROM users WHERE id = ?', uid))) throw notFound('User not found');
+  if (!(await q.get('SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ?', req.ws.id, uid))) throw notFound('User not found');
   return uid;
 }
 
 async function loadEditable(req, entryId) {
-  const row = await q.get('SELECT * FROM time_entries WHERE id = ?', entryId);
+  const row = await q.get('SELECT * FROM time_entries WHERE id = ? AND workspace_id = ?', entryId, req.ws.id);
   if (!row) throw notFound('Time entry not found');
   if (row.user_id !== req.user.id && req.user.role !== 'admin') throw forbidden();
   return row;
@@ -55,7 +55,7 @@ async function readInput(req, body, current) {
     let taskId = 'taskId' in body ? id(body.taskId) : current?.task_id ?? null;
     if (taskId) {
       const allowed = out.projectIds ?? [...new Set([current?.project_id, ...(await currentProjectIds(current))].filter(Boolean))];
-      const task = await q.get('SELECT project_id FROM tasks WHERE id = ?', taskId);
+      const task = await q.get('SELECT t.project_id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.workspace_id = ?', taskId, req.ws.id);
       if (!task || !allowed.includes(task.project_id)) {
         if ('taskId' in body) throw bad('Task does not belong to the selected project');
         taskId = null;
@@ -71,7 +71,7 @@ async function readInput(req, body, current) {
     if (!Array.isArray(body.tagIds)) throw bad('tagIds must be a list');
     const tagIds = [...new Set(body.tagIds.map(id).filter(Boolean))];
     if (tagIds.length) {
-      const found = await q.all(`SELECT id FROM tags WHERE id IN (${marks(tagIds)})`, ...tagIds);
+      const found = await q.all(`SELECT id FROM tags WHERE workspace_id = ? AND id IN (${marks(tagIds)})`, req.ws.id, ...tagIds);
       if (found.length !== tagIds.length) throw bad('Tag not found');
     }
     out.tagIds = tagIds;
@@ -94,14 +94,14 @@ const projectStatements = (entryId, projectIds) => [
   ...projectIds.map((p) => ['INSERT INTO entry_projects (entry_id, project_id) VALUES (?, ?)', entryId, p]),
 ];
 
-const INSERT_ENTRY = `INSERT INTO time_entries (user_id, description, project_id, task_id, billable, start_at, end_at, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`;
-const insertArgs = (userId, f, now) => [
-  userId, f.description ?? '', f.project_id ?? null, f.task_id ?? null, f.billable ?? 0, f.start_at, f.end_at ?? null, now, now,
+const INSERT_ENTRY = `INSERT INTO time_entries (workspace_id, user_id, description, project_id, task_id, billable, start_at, end_at, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`;
+const insertArgs = (wsId, userId, f, now) => [
+  wsId, userId, f.description ?? '', f.project_id ?? null, f.task_id ?? null, f.billable ?? 0, f.start_at, f.end_at ?? null, now, now,
 ];
 
-async function insertEntry(userId, f) {
-  const { rows } = await q.run(INSERT_ENTRY, ...insertArgs(userId, f, Date.now()));
+async function insertEntry(wsId, userId, f) {
+  const { rows } = await q.run(INSERT_ENTRY, ...insertArgs(wsId, userId, f, Date.now()));
   const entryId = rows[0].id;
   const extras = [
     ...(f.tagIds?.length ? tagStatements(entryId, f.tagIds) : []),
@@ -129,14 +129,14 @@ r.get('/', async (req, res) => {
   const before = Number(req.query.before) || MAX_TS;
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
   const rows = await q.all(
-    `${ENTRY_SELECT} WHERE e.user_id = ? AND e.end_at IS NOT NULL AND e.start_at < ? ORDER BY e.start_at DESC, e.id DESC LIMIT ?`,
-    userId, before, limit + 1,
+    `${ENTRY_SELECT} WHERE e.workspace_id = ? AND e.user_id = ? AND e.end_at IS NOT NULL AND e.start_at < ? ORDER BY e.start_at DESC, e.id DESC LIMIT ?`,
+    req.ws.id, userId, before, limit + 1,
   );
   res.json({ entries: rows.slice(0, limit).map(mapEntry), hasMore: rows.length > limit });
 });
 
 r.get('/running', async (req, res) => {
-  const row = await q.get(`${ENTRY_SELECT} WHERE e.user_id = ? AND e.end_at IS NULL`, req.user.id);
+  const row = await q.get(`${ENTRY_SELECT} WHERE e.workspace_id = ? AND e.user_id = ? AND e.end_at IS NULL`, req.ws.id, req.user.id);
   res.json({ entry: row ? mapEntry(row) : null });
 });
 
@@ -146,8 +146,8 @@ r.get('/range', async (req, res) => {
   const start = ms(Number(req.query.start), 'start');
   const end = ms(Number(req.query.end), 'end');
   const rows = await q.all(
-    `${ENTRY_SELECT} WHERE e.user_id = ? AND e.start_at < ? AND COALESCE(e.end_at, ?) > ? ORDER BY e.start_at`,
-    userId, end, Date.now(), start,
+    `${ENTRY_SELECT} WHERE e.workspace_id = ? AND e.user_id = ? AND e.start_at < ? AND COALESCE(e.end_at, ?) > ? ORDER BY e.start_at`,
+    req.ws.id, userId, end, Date.now(), start,
   );
   res.json({ entries: rows.map(mapEntry) });
 });
@@ -160,9 +160,9 @@ r.get('/suggestions', async (req, res) => {
        (SELECT group_concat(et.tag_id) FROM entry_tags et WHERE et.entry_id = e.id) AS tag_ids,
        (SELECT group_concat(ep.project_id) FROM entry_projects ep WHERE ep.entry_id = e.id) AS project_ids
      FROM time_entries e
-     WHERE e.user_id = ? AND e.description <> '' AND e.description LIKE ? ESCAPE '\\'
+     WHERE e.workspace_id = ? AND e.user_id = ? AND e.description <> '' AND e.description LIKE ? ESCAPE '\\'
      ORDER BY e.start_at DESC LIMIT 200`,
-    req.user.id, `%${term}%`,
+    req.ws.id, req.user.id, `%${term}%`,
   );
   res.json({ suggestions: groupSuggestions(rows) });
 });
@@ -174,9 +174,9 @@ r.post('/start', async (req, res) => {
   const start = Math.min(fields.start_at ?? now, now);
   // Stop whatever is running and start the new timer atomically.
   const [running, , inserted] = await q.batch([
-    ['SELECT id FROM time_entries WHERE user_id = ? AND end_at IS NULL', req.user.id],
-    ['UPDATE time_entries SET end_at = MAX(?, start_at), updated_at = ? WHERE user_id = ? AND end_at IS NULL', now, now, req.user.id],
-    [INSERT_ENTRY, ...insertArgs(req.user.id, { ...fields, start_at: start, end_at: null }, now)],
+    ['SELECT id FROM time_entries WHERE workspace_id = ? AND user_id = ? AND end_at IS NULL', req.ws.id, req.user.id],
+    ['UPDATE time_entries SET end_at = MAX(?, start_at), updated_at = ? WHERE workspace_id = ? AND user_id = ? AND end_at IS NULL', now, now, req.ws.id, req.user.id],
+    [INSERT_ENTRY, ...insertArgs(req.ws.id, req.user.id, { ...fields, start_at: start, end_at: null }, now)],
   ]);
   const newId = inserted.rows[0].id;
   const stoppedId = running.rows[0]?.id;
@@ -193,8 +193,8 @@ r.post('/start', async (req, res) => {
 r.post('/stop', async (req, res) => {
   const end = req.body.end != null ? ms(req.body.end, 'end time') : Date.now();
   const { rows } = await q.run(
-    'UPDATE time_entries SET end_at = MAX(?, start_at), updated_at = ? WHERE user_id = ? AND end_at IS NULL RETURNING id',
-    end, Date.now(), req.user.id,
+    'UPDATE time_entries SET end_at = MAX(?, start_at), updated_at = ? WHERE workspace_id = ? AND user_id = ? AND end_at IS NULL RETURNING id',
+    end, Date.now(), req.ws.id, req.user.id,
   );
   if (!rows.length) return res.json({ entry: null });
   scheduleSync(rows[0].id);
@@ -206,7 +206,7 @@ r.post('/', async (req, res) => {
   const userId = await targetUserId(req, req.body.userId);
   if (req.body.start == null || req.body.end == null) throw bad('Start and end time are required');
   const fields = await readInput(req, req.body, null);
-  const entryId = await insertEntry(userId, fields);
+  const entryId = await insertEntry(req.ws.id, userId, fields);
   scheduleSync(entryId);
   res.json({ entry: await getEntry(entryId) });
 });

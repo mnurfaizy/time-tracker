@@ -3,10 +3,12 @@ import { api } from '../api.js';
 import { useData } from '../store.jsx';
 import { Field, Toggle } from '../components/ui.jsx';
 import { ClockifyImport } from '../components/ClockifyImport.jsx';
+import { workspaceUrl } from '../components/Workspaces.jsx';
+import { basePath, slugProblem } from '../../../shared/workspace.js';
 
 export default function WorkspaceSettings() {
-  const { settings, setSettings, toast } = useData();
-  const [form, setForm] = useState(settings);
+  const { settings, setSettings, workspace, toast } = useData();
+  const [form, setForm] = useState({ ...settings, slug: workspace.slug });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -14,9 +16,11 @@ export default function WorkspaceSettings() {
     e.preventDefault();
     setBusy(true);
     try {
-      const d = await api.put('/workspace', form);
+      const d = await api.put('/workspace', workspace.primary ? { ...form, slug: undefined } : form);
+      // A new link name moves this workspace to a new URL.
+      if (d.workspace.slug !== workspace.slug) return window.location.replace(`${basePath(d.workspace)}/settings`);
       setSettings(d.settings);
-      setForm(d.settings);
+      setForm({ ...d.settings, slug: d.workspace.slug });
       toast('Workspace settings saved', 'success');
     } catch (err) {
       toast(err.message);
@@ -33,6 +37,18 @@ export default function WorkspaceSettings() {
         <Field label="Workspace name">
           <input className="input" value={form.workspaceName} onChange={(e) => set('workspaceName', e.target.value)} required />
         </Field>
+        {workspace.primary ? (
+          <Field label="Link" hint="This is the main workspace, so it keeps the original links. Other workspaces open under their own name.">
+            <input className="input" value={workspaceUrl(workspace, '')} readOnly />
+          </Field>
+        ) : (
+          <Field label="Link" hint={(form.slug && slugProblem(form.slug)) || `Everyone opens this workspace at ${workspaceUrl({ ...workspace, slug: form.slug })}. Changing it breaks old bookmarks.`}>
+            <div className="input-prefixed">
+              <span className="input-prefix">{window.location.host}/</span>
+              <input className="input" value={form.slug} maxLength={40} required onChange={(e) => set('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
+            </div>
+          </Field>
+        )}
 
         <h3 className="section-title">Billing</h3>
         <div className="grid-2">

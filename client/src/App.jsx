@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { api } from './api.js';
+import { api, basename } from './api.js';
+import { basePath } from '../../shared/workspace.js';
 import { DataProvider, useData } from './store.jsx';
 import { Layout } from './components/Layout.jsx';
 import { Login, Setup, Signup } from './pages/Auth.jsx';
@@ -16,6 +17,18 @@ import Team from './pages/Team.jsx';
 import WorkspaceSettings from './pages/WorkspaceSettings.jsx';
 import Profile from './pages/Profile.jsx';
 
+/**
+ * When the URL names a different workspace than the one we are really in (e.g. /rakamin/tracker for the
+ * main workspace, or a workspace the user is not a member of), reload at the right link. True if it did.
+ */
+function fixWorkspaceUrl(ws) {
+  const want = basePath(ws);
+  if (want === basename) return false;
+  const rest = window.location.pathname.slice(basename.length) || '/';
+  window.location.replace(`${want}${rest}${window.location.search}`);
+  return true;
+}
+
 function AdminOnly({ children }) {
   const { isAdmin } = useData();
   return isAdmin ? children : <Navigate to="/tracker" replace />;
@@ -27,7 +40,9 @@ export default function App() {
 
   const loadSession = useCallback(async () => {
     try {
-      setSession(await api.get('/auth/me'));
+      const me = await api.get('/auth/me');
+      if (fixWorkspaceUrl(me.workspace)) return; // keeps the spinner while the page reloads
+      setSession(me);
     } catch {
       setSession(null);
     }
@@ -37,6 +52,7 @@ export default function App() {
     api
       .get('/auth/state')
       .then((state) => {
+        if (state.workspace && fixWorkspaceUrl(state.workspace)) return;
         setBoot(state);
         if (state.needsSetup) setSession(null);
         else loadSession();

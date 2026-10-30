@@ -19,13 +19,13 @@ async function insertUser(name) {
 }
 
 async function insertProject(name) {
-  const { rows } = await q.run('INSERT INTO projects (name, created_at) VALUES (?, ?) RETURNING id', name, NOW);
+  const { rows } = await q.run('INSERT INTO projects (workspace_id, name, created_at) VALUES (1, ?, ?) RETURNING id', name, NOW);
   return rows[0].id;
 }
 
 async function insertEntry(userId, projectId, taskId = null) {
   const { rows } = await q.run(
-    'INSERT INTO time_entries (user_id, description, project_id, task_id, start_at, end_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+    'INSERT INTO time_entries (workspace_id, user_id, description, project_id, task_id, start_at, end_at, created_at, updated_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
     userId, '', projectId, taskId, NOW, NOW + 1000, NOW, NOW,
   );
   return rows[0].id;
@@ -41,6 +41,7 @@ const linkedIds = async (entryId) => (await q.all('SELECT project_id FROM entry_
 
 before(async () => {
   await initDb();
+  await q.run("INSERT INTO workspaces (id, name, slug, created_at) VALUES (1, 'Test', 'test', ?)", NOW);
 });
 
 test('initDb creates the entry_projects table and backfills existing entries', async () => {

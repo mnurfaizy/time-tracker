@@ -26,6 +26,17 @@ Aplikasi web time tracking dengan tampilan dan alur kerja seperti Clockify. 100%
 | Edit/archive/hapus project, client, tag | ✅ | ❌ |
 | Kelola tim & pengaturan workspace | ✅ | ❌ |
 | Project private | Melihat semua | Hanya yang ia menjadi anggotanya |
+| Buat workspace baru | ✅ | ❌ |
+
+### Beberapa workspace
+
+Satu server bisa menampung beberapa workspace (mis. per perusahaan/klien). Project, client, tag, tim, pengaturan, dan report terpisah total per workspace; peran Admin/Member juga per workspace.
+
+- **Workspace utama** (yang pertama dibuat) tetap memakai link biasa: `/tracker`, `/reports`, dst.
+- **Workspace lain** memakai namanya di link: `/multipolar/tracker`. Nama link bisa diubah di **Settings**.
+- Buat workspace dari menu workspace di atas sidebar → **Create workspace**. Tambahkan orang lewat **Team → Members**; kalau emailnya sudah punya akun di workspace lain, ia cukup ditambahkan dan tetap memakai password yang sama.
+- Orang yang hanya ada di satu workspace tidak melihat menu workspace sama sekali. Extension browser selalu mencatat ke workspace utama.
+- Saat pertama kali dijalankan setelah update, data lama otomatis menjadi workspace utama.
 
 ## Menjalankan
 
