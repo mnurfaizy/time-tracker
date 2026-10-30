@@ -40,12 +40,45 @@ export function totals(entries, defaultRate = 0) {
   return { duration, billableDuration, amount };
 }
 
+/**
+ * Every project of an entry as { id, name, color, clientId, clientName }, deduplicated.
+ * New entries carry `projects`; older data only has the single-project fields.
+ */
+export function entryProjects(e) {
+  if (Array.isArray(e.projects)) {
+    const seen = new Set();
+    const out = [];
+    for (const p of e.projects) {
+      if (!p || p.id == null || seen.has(p.id)) continue;
+      seen.add(p.id);
+      out.push(p);
+    }
+    return out;
+  }
+  return e.projectId != null
+    ? [{ id: e.projectId, name: e.projectName, color: e.projectColor, clientId: e.clientId, clientName: e.clientName }]
+    : [];
+}
+
 function keysFor(e, by, ctx) {
   switch (by) {
-    case 'project':
-      return [{ key: `p${e.projectId ?? 0}`, label: e.projectName ?? '(Without project)', color: e.projectColor ?? null, sub: e.clientName ?? '' }];
-    case 'client':
-      return [{ key: `c${e.clientId ?? 0}`, label: e.clientName ?? '(Without client)' }];
+    // An entry with several projects counts fully towards each of them (like tags),
+    // while grand totals always count it once.
+    case 'project': {
+      const ps = entryProjects(e);
+      if (!ps.length) return [{ key: 'p0', label: '(Without project)', color: null, sub: '' }];
+      return ps.map((p) => ({ key: `p${p.id}`, label: p.name ?? '(Without project)', color: p.color ?? null, sub: p.clientName ?? '' }));
+    }
+    case 'client': {
+      const ps = entryProjects(e);
+      const clientIds = [...new Set(ps.map((p) => p.clientId).filter((cid) => cid != null))];
+      if (!clientIds.length) return [{ key: 'c0', label: '(Without client)' }];
+      // Projects sharing a client collapse into one key, so nothing is counted twice.
+      return clientIds.map((cid) => {
+        const p = ps.find((x) => x.clientId === cid);
+        return { key: `c${cid}`, label: p.clientName ?? '(Without client)' };
+      });
+    }
     case 'user':
       return [{ key: `u${e.userId}`, label: e.userName }];
     case 'task':

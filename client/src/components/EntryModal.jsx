@@ -11,10 +11,11 @@ import { formatDuration, toDateInput, fromDateInput, toTimeInput, parseTimeStr, 
  */
 export function EntryModal({ entry, draft, userId, onClose, onSaved, onDeleted }) {
   const { toast, user, isAdmin } = useData();
-  const init = entry ?? { description: '', projectId: null, taskId: null, tagIds: [], billable: false, ...draft };
+  const init = entry ?? { description: '', projectIds: [], taskId: null, tagIds: [], billable: false, ...draft };
   const running = entry && entry.end == null;
   const [description, setDescription] = useState(init.description ?? '');
-  const [project, setProject] = useState({ projectId: init.projectId ?? null, taskId: init.taskId ?? null });
+  const initialIds = Array.isArray(init.projectIds) ? init.projectIds : init.projectId ? [init.projectId] : [];
+  const [project, setProject] = useState({ projectIds: initialIds, taskId: init.taskId ?? null });
   const [tagIds, setTagIds] = useState(init.tagIds ?? []);
   const [billable, setBillable] = useState(!!init.billable);
   const [date, setDate] = useState(toDateInput(init.start));
@@ -35,7 +36,7 @@ export function EntryModal({ entry, draft, userId, onClose, onSaved, onDeleted }
     e.preventDefault();
     if (!valid) return;
     setBusy(true);
-    const body = { description, projectId: project.projectId, taskId: project.taskId, tagIds, billable, start };
+    const body = { description, projectIds: project.projectIds, taskId: project.taskId, tagIds, billable, start };
     if (!running) body.end = end;
     try {
       const { entry: saved } = entry
@@ -91,13 +92,14 @@ export function EntryModal({ entry, draft, userId, onClose, onSaved, onDeleted }
         />
         <div className="entry-form-row">
           <ProjectPicker
-            projectId={project.projectId}
+            projectIds={project.projectIds}
             taskId={project.taskId}
             fallback={entry}
             className="bordered"
-            onChange={({ projectId, taskId, project: p }) => {
-              setProject({ projectId, taskId });
-              if (p && projectId !== project.projectId) setBillable(p.billable);
+            onChange={({ projectIds, taskId, project: p }) => {
+              const changed = [...projectIds].sort().join('.') !== [...project.projectIds].sort().join('.');
+              setProject({ projectIds, taskId });
+              if (p && changed && projectIds.length === 1) setBillable(p.billable);
             }}
           />
           <div className="entry-form-icons">

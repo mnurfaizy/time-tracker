@@ -49,6 +49,13 @@ export function idList(v) {
     .filter((n) => Number.isInteger(n) && n >= 0);
 }
 
+/** Body field `projectIds`: a list of positive ids, deduplicated in input order. null when absent. */
+export function normalizeProjectIds(v) {
+  if (v == null) return null;
+  if (!Array.isArray(v)) throw bad('projectIds must be a list');
+  return [...new Set(v.map((x) => (typeof x === 'boolean' ? null : id(x))).filter(Boolean))];
+}
+
 export function ms(v, field) {
   const n = typeof v === 'number' ? v : Date.parse(v);
   if (!Number.isFinite(n)) throw bad(`Invalid ${field}`);

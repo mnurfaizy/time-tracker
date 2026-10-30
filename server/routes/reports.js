@@ -56,7 +56,18 @@ export async function reportEntries(user, f, { teamView = false } = {}) {
     where.push(parts.length ? `(${parts.join(' OR ')})` : '0');
   };
   if (f.clients) inOrNull('c.id', f.clients);
-  if (f.projects) inOrNull('e.project_id', f.projects);
+  if (f.projects) {
+    // Match any linked project; e.project_id covers rows written before the upgrade.
+    const real = f.projects.filter(Boolean);
+    const parts = [];
+    if (real.length) {
+      parts.push(`(EXISTS (SELECT 1 FROM entry_projects ep WHERE ep.entry_id = e.id AND ep.project_id IN (${marks(real)}))
+        OR e.project_id IN (${marks(real)}))`);
+      params.push(...real, ...real);
+    }
+    if (f.projects.includes(0)) parts.push('(NOT EXISTS (SELECT 1 FROM entry_projects ep WHERE ep.entry_id = e.id) AND e.project_id IS NULL)');
+    where.push(parts.length ? `(${parts.join(' OR ')})` : '0');
+  }
   if (f.tags) {
     const real = f.tags.filter(Boolean);
     const parts = [];
@@ -134,8 +145,10 @@ r.get('/export', async (req, res) => {
     ]);
     for (const e of entries) {
       const dur = entryDuration(e);
+      const projNames = [...new Set((e.projects?.length ? e.projects : []).map((p) => p.name).filter(Boolean))].join(', ');
+      const clientNames = [...new Set((e.projects?.length ? e.projects : []).map((p) => p.clientName).filter(Boolean))].join(', ');
       rows.push([
-        e.projectName ?? '', e.clientName ?? '', e.description, e.taskName ?? '', e.userName, e.userEmail,
+        projNames || (e.projectName ?? ''), clientNames || (e.clientName ?? ''), e.description, e.taskName ?? '', e.userName, e.userEmail,
         e.tagIds.map(ctx.tagName).filter(Boolean).join(', '), e.billable ? 'Yes' : 'No',
         dayKey(e.start, tz), clockTime(e.start, tz, '24', true), dayKey(e.end, tz), clockTime(e.end, tz, '24', true),
         formatDuration(dur), hoursDecimal(dur),

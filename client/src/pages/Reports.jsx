@@ -312,7 +312,7 @@ function SummaryRows({ node, open, toggle, money, total }) {
 const PAGE_SIZE = 50;
 
 function DetailedReport({ entries, onChanged }) {
-  const { settings, tagById, isAdmin, user, projectById } = useData();
+  const { settings, tagById, isAdmin, user } = useData();
   const money = useMoney();
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState(null);
@@ -334,8 +334,9 @@ function DetailedReport({ entries, onChanged }) {
         </thead>
         <tbody>
           {rows.map((e) => {
-            const p = e.projectId ? projectById.get(e.projectId) : null;
-            const color = p?.color ?? e.projectColor;
+            const eps = e.projects?.length ? e.projects : e.projectId != null ? [{ id: e.projectId, name: e.projectName, color: e.projectColor, clientId: e.clientId, clientName: e.clientName }] : [];
+            const p = eps[0] ?? null;
+            const color = p?.color;
             const editable = isAdmin || e.userId === user.id;
             const crosses = startOfDay(e.end).getTime() !== startOfDay(e.start).getTime();
             return (
@@ -343,11 +344,12 @@ function DetailedReport({ entries, onChanged }) {
                 <td>
                   <div className="detailed-desc">{e.description || <span className="muted">(no description)</span>}</div>
                   <div className="detailed-meta">
-                    {e.projectName ? (
-                      <span style={{ color }}>
-                        <span className="dot" style={{ background: color }} /> {e.projectName}
+                    {p ? (
+                      <span style={{ color }} title={eps.length > 1 ? eps.map((x) => x.name).join(', ') : undefined}>
+                        <span className="dot" style={{ background: color }} /> {p.name}
+                        {eps.length > 1 && <span className="project-label-extra">+{eps.length - 1}</span>}
                         {e.taskName && `: ${e.taskName}`}
-                        {e.clientName && <span className="muted"> - {e.clientName}</span>}
+                        {p.clientName && <span className="muted"> - {p.clientName}</span>}
                       </span>
                     ) : (
                       <span className="muted">No project</span>

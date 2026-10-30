@@ -112,6 +112,14 @@ CREATE TABLE IF NOT EXISTS entry_tags (
   PRIMARY KEY (entry_id, tag_id)
 );
 
+-- An entry can carry several projects; time_entries.project_id stays denormalized as the
+-- first (primary) one so older clients keep working.
+CREATE TABLE IF NOT EXISTS entry_projects (
+  entry_id INTEGER NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  PRIMARY KEY (entry_id, project_id)
+);
+
 CREATE TABLE IF NOT EXISTS oauth_states (
   state TEXT PRIMARY KEY,
   user_id INTEGER,
@@ -126,6 +134,13 @@ export async function initDb() {
   // Migrations for databases created by older versions.
   const userCols = (await db.execute('PRAGMA table_info(users)')).rows.map((c) => c.name);
   if (!userCols.includes('pending')) await db.execute('ALTER TABLE users ADD COLUMN pending INTEGER NOT NULL DEFAULT 0');
+  // Entries created before multi-project support get their primary project into the junction.
+  await db.execute(`
+    INSERT INTO entry_projects (entry_id, project_id)
+    SELECT id, project_id FROM time_entries
+    WHERE project_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM entry_projects ep WHERE ep.entry_id = time_entries.id)
+  `);
 }
 
 // libSQL only binds null/number/string/bigint/buffer.

@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { q } from '../db.js';
 import { requireAuth } from '../auth.js';
-import { bad, forbidden, notFound, id, ms } from '../util.js';
-import { ENTRY_SELECT, mapEntry, getEntry } from '../lib/entries.js';
+import { bad, forbidden, notFound, id, ms, normalizeProjectIds } from '../util.js';
+import { ENTRY_SELECT, mapEntry, getEntry, groupSuggestions } from '../lib/entries.js';
 import { scheduleSync, scheduleRemove } from '../lib/gcalSync.js';
 import { canUseProject } from './projects.js';
 
@@ -28,25 +28,35 @@ async function loadEditable(req, entryId) {
   return row;
 }
 
+/** Junction ids of a stored entry (empty when the entry predates multi-project support). */
+const currentProjectIds = async (current) =>
+  current ? (await q.all('SELECT project_id FROM entry_projects WHERE entry_id = ?', current.id)).map((r) => r.project_id) : [];
+
 /** Validates the editable fields present in `body`; `current` is the stored row (or null). */
 async function readInput(req, body, current) {
   const out = {};
   if ('description' in body) out.description = String(body.description ?? '').slice(0, 3000);
   if ('billable' in body) out.billable = body.billable ? 1 : 0;
 
-  let projectId = current?.project_id ?? null;
-  if ('projectId' in body) {
-    projectId = id(body.projectId);
-    if (projectId && projectId !== current?.project_id && !(await canUseProject(req.user, projectId))) {
-      throw bad('Project not found or you do not have access to it');
+  // projectIds (multi) wins when present; a lone projectId (older clients) replaces the set.
+  let projectIds = null;
+  if ('projectIds' in body) projectIds = normalizeProjectIds(body.projectIds);
+  else if ('projectId' in body) projectIds = [id(body.projectId)].filter(Boolean);
+  if (projectIds) {
+    for (const pid of projectIds) {
+      if (pid !== current?.project_id && !(await canUseProject(req.user, pid))) {
+        throw bad('Project not found or you do not have access to it');
+      }
     }
-    out.project_id = projectId;
+    out.projectIds = projectIds;
+    out.project_id = projectIds[0] ?? null; // first selected is the primary
   }
-  if ('taskId' in body || 'projectId' in body) {
+  if ('taskId' in body || 'projectId' in body || out.projectIds) {
     let taskId = 'taskId' in body ? id(body.taskId) : current?.task_id ?? null;
     if (taskId) {
+      const allowed = out.projectIds ?? [...new Set([current?.project_id, ...(await currentProjectIds(current))].filter(Boolean))];
       const task = await q.get('SELECT project_id FROM tasks WHERE id = ?', taskId);
-      if (!task || task.project_id !== projectId) {
+      if (!task || !allowed.includes(task.project_id)) {
         if ('taskId' in body) throw bad('Task does not belong to the selected project');
         taskId = null;
       }
@@ -79,6 +89,11 @@ const tagStatements = (entryId, tagIds) => [
   ...tagIds.map((t) => ['INSERT INTO entry_tags (entry_id, tag_id) VALUES (?, ?)', entryId, t]),
 ];
 
+const projectStatements = (entryId, projectIds) => [
+  ['DELETE FROM entry_projects WHERE entry_id = ?', entryId],
+  ...projectIds.map((p) => ['INSERT INTO entry_projects (entry_id, project_id) VALUES (?, ?)', entryId, p]),
+];
+
 const INSERT_ENTRY = `INSERT INTO time_entries (user_id, description, project_id, task_id, billable, start_at, end_at, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`;
 const insertArgs = (userId, f, now) => [
@@ -88,17 +103,24 @@ const insertArgs = (userId, f, now) => [
 async function insertEntry(userId, f) {
   const { rows } = await q.run(INSERT_ENTRY, ...insertArgs(userId, f, Date.now()));
   const entryId = rows[0].id;
-  if (f.tagIds?.length) await q.batch(tagStatements(entryId, f.tagIds));
+  const extras = [
+    ...(f.tagIds?.length ? tagStatements(entryId, f.tagIds) : []),
+    ...(f.projectIds?.length ? projectStatements(entryId, f.projectIds) : []),
+  ];
+  if (extras.length) await q.batch(extras);
   return entryId;
 }
 
 async function updateEntry(entryId, fields) {
-  const { tagIds, ...cols } = fields;
+  const { tagIds, projectIds, ...cols } = fields;
   const keys = Object.keys(cols);
-  await q.batch([
-    [`UPDATE time_entries SET ${[...keys.map((k) => `${k} = ?`), 'updated_at = ?'].join(', ')} WHERE id = ?`, ...keys.map((k) => cols[k]), Date.now(), entryId],
-    ...(tagIds ? tagStatements(entryId, tagIds) : []),
-  ]);
+  const stmts = [];
+  if (keys.length) {
+    stmts.push([`UPDATE time_entries SET ${[...keys.map((k) => `${k} = ?`), 'updated_at = ?'].join(', ')} WHERE id = ?`, ...keys.map((k) => cols[k]), Date.now(), entryId]);
+  }
+  if (tagIds) stmts.push(...tagStatements(entryId, tagIds));
+  if (projectIds) stmts.push(...projectStatements(entryId, projectIds));
+  if (stmts.length) await q.batch(stmts);
 }
 
 // Finished entries, newest first, for the Time Tracker list (always the caller's own).
@@ -134,23 +156,15 @@ r.get('/range', async (req, res) => {
 r.get('/suggestions', async (req, res) => {
   const term = String(req.query.q ?? '').slice(0, 200).replace(/[\\%_]/g, (c) => `\\${c}`);
   const rows = await q.all(
-    `SELECT e.description, e.project_id, e.task_id, e.billable, MAX(e.start_at) AS last,
-       (SELECT group_concat(et.tag_id) FROM entry_tags et WHERE et.entry_id = e.id) AS tag_ids
+    `SELECT e.description, e.project_id, e.task_id, e.billable, e.start_at AS last,
+       (SELECT group_concat(et.tag_id) FROM entry_tags et WHERE et.entry_id = e.id) AS tag_ids,
+       (SELECT group_concat(ep.project_id) FROM entry_projects ep WHERE ep.entry_id = e.id) AS project_ids
      FROM time_entries e
      WHERE e.user_id = ? AND e.description <> '' AND e.description LIKE ? ESCAPE '\\'
-     GROUP BY e.description, e.project_id, e.task_id
-     ORDER BY last DESC LIMIT 8`,
+     ORDER BY e.start_at DESC LIMIT 200`,
     req.user.id, `%${term}%`,
   );
-  res.json({
-    suggestions: rows.map((s) => ({
-      description: s.description,
-      projectId: s.project_id,
-      taskId: s.task_id,
-      billable: !!s.billable,
-      tagIds: s.tag_ids ? String(s.tag_ids).split(',').map(Number) : [],
-    })),
-  });
+  res.json({ suggestions: groupSuggestions(rows) });
 });
 
 r.post('/start', async (req, res) => {
@@ -166,7 +180,11 @@ r.post('/start', async (req, res) => {
   ]);
   const newId = inserted.rows[0].id;
   const stoppedId = running.rows[0]?.id;
-  if (fields.tagIds?.length) await q.batch(tagStatements(newId, fields.tagIds));
+  const extras = [
+    ...(fields.tagIds?.length ? tagStatements(newId, fields.tagIds) : []),
+    ...(fields.projectIds?.length ? projectStatements(newId, fields.projectIds) : []),
+  ];
+  if (extras.length) await q.batch(extras);
   if (stoppedId) scheduleSync(stoppedId);
   const [entry, stopped] = await Promise.all([getEntry(newId), stoppedId ? getEntry(stoppedId) : null]);
   res.json({ entry, stopped });
@@ -207,6 +225,7 @@ r.delete('/:id', async (req, res) => {
   const current = await loadEditable(req, id(req.params.id));
   await q.batch([
     ['DELETE FROM entry_tags WHERE entry_id = ?', current.id],
+    ['DELETE FROM entry_projects WHERE entry_id = ?', current.id],
     ['DELETE FROM time_entries WHERE id = ?', current.id],
   ]);
   scheduleRemove(current.user_id, current.gcal_event_id, current.id);

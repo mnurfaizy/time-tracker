@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { q, getSettings } from '../db.js';
 import { requireAuth, requireAdmin, requireCreator } from '../auth.js';
 import { bad, forbidden, notFound, reqStr, str, id, color } from '../util.js';
+import { detachProject } from '../lib/entries.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -39,9 +40,19 @@ export async function listProjects(user, onlyId = null) {
     q.all(`SELECT * FROM tasks ${scope} ORDER BY done, name COLLATE NOCASE`, ...scopeArgs),
     isAdmin ? q.all(`SELECT * FROM project_members ${scope}`, ...scopeArgs) : [],
     q.all(
-      `SELECT project_id, SUM(end_at - start_at) AS tracked,
-         SUM(CASE WHEN billable = 1 THEN end_at - start_at ELSE 0 END) AS billable_tracked
-       FROM time_entries WHERE end_at IS NOT NULL AND project_id IS NOT NULL ${onlyId ? 'AND project_id = ?' : ''}
+      `SELECT project_id, SUM(dur) AS tracked,
+         SUM(CASE WHEN billable = 1 THEN dur ELSE 0 END) AS billable_tracked
+       FROM (
+         SELECT ep.project_id, e.end_at - e.start_at AS dur, e.billable
+           FROM entry_projects ep JOIN time_entries e ON e.id = ep.entry_id
+           WHERE e.end_at IS NOT NULL
+         UNION ALL
+         SELECT e.project_id, e.end_at - e.start_at AS dur, e.billable
+           FROM time_entries e
+           WHERE e.end_at IS NOT NULL AND e.project_id IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM entry_projects x WHERE x.entry_id = e.id)
+       )
+       ${onlyId ? 'WHERE project_id = ?' : ''}
        GROUP BY project_id`,
       ...scopeArgs,
     ),
@@ -124,10 +135,9 @@ r.put('/:id', requireAdmin, async (req, res) => {
 
 r.delete('/:id', requireAdmin, async (req, res) => {
   const p = await getProject(id(req.params.id));
-  // Time entries are kept, just detached from the project.
+  // Time entries are kept, just detached from the project (repointed to another linked one).
+  await detachProject(p.id);
   await q.batch([
-    ['UPDATE time_entries SET project_id = NULL, task_id = NULL WHERE project_id = ?', p.id],
-    ['DELETE FROM tasks WHERE project_id = ?', p.id],
     ['DELETE FROM project_members WHERE project_id = ?', p.id],
     ['DELETE FROM projects WHERE id = ?', p.id],
   ]);
