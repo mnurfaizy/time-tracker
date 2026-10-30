@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "node --watch-path=server --watch-path=shared server/index.js --dev",
     "build": "vite build",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

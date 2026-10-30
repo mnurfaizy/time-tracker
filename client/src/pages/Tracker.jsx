@@ -15,7 +15,9 @@ import {
 const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const emptyDraft = { description: '', projectId: null, taskId: null, tagIds: [], billable: false };
+const emptyDraft = { description: '', projectIds: [], taskId: null, tagIds: [], billable: false };
+
+const entryProjectIds = (e) => (Array.isArray(e.projectIds) ? e.projectIds : e.projectId ? [e.projectId] : []);
 
 const sortEntries = (list) => [...list].sort((a, b) => b.start - a.start || b.id - a.id);
 const upsert = (list, e) => sortEntries([...list.filter((x) => x.id !== e.id), e]);
@@ -153,10 +155,10 @@ export default function Tracker() {
   };
 
   const duplicate = (e) =>
-    addManual({ description: e.description, projectId: e.projectId, taskId: e.taskId, tagIds: e.tagIds, billable: e.billable, start: e.start, end: e.end });
+    addManual({ description: e.description, projectIds: entryProjectIds(e), taskId: e.taskId, tagIds: e.tagIds, billable: e.billable, start: e.start, end: e.end });
 
   const continueEntry = (e) =>
-    start({ description: e.description, projectId: e.projectId, taskId: e.taskId, tagIds: e.tagIds, billable: e.billable });
+    start({ description: e.description, projectIds: entryProjectIds(e), taskId: e.taskId, tagIds: e.tagIds, billable: e.billable });
 
   const weeks = useMemo(() => groupIntoWeeks(entries, settings.weekStart), [entries, settings.weekStart]);
   const actions = { updateEntry, deleteEntries, duplicate, continueEntry };
@@ -310,11 +312,11 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
 
   const applySuggestion = (s) => {
     setDesc(s.description);
-    const p = s.projectId ? projectById.get(s.projectId) : null;
+    const ids = (s.projectIds ?? entryProjectIds(s)).filter((pid) => projectById.has(pid));
     const fields = {
       description: s.description,
-      projectId: p ? s.projectId : null,
-      taskId: p ? s.taskId : null,
+      projectIds: ids,
+      taskId: ids.length ? s.taskId : null,
       tagIds: s.tagIds,
       billable: s.billable,
     };
@@ -324,7 +326,7 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
 
   // Dictation: a confident match starts the timer, otherwise the panel asks which project it is.
   const applyVoice = async (project, task, description) => {
-    const fields = { description, projectId: project?.id ?? null, taskId: task?.id ?? null, tagIds: [], billable: project ? !!project.billable : false };
+    const fields = { description, projectIds: project ? [project.id] : [], taskId: task?.id ?? null, tagIds: [], billable: project ? !!project.billable : false };
     setDesc(description);
     if (effectiveMode === 'manual') {
       setDraft((d) => ({ ...d, ...fields }));
@@ -377,14 +379,15 @@ function TimerBar({ running, onStart, onStop, onUpdateRunning, onDiscard, onAddM
       </div>
       <div className="timer-bar-tools">
         <ProjectPicker
-          projectId={current.projectId}
+          projectIds={current.projectIds ?? []}
           taskId={current.taskId}
           fallback={running}
-          onChange={({ projectId, taskId, project }) => {
-            const patch = { projectId, taskId };
-            if (project && projectId !== current.projectId) patch.billable = project.billable;
+          onChange={({ projectIds, taskId, project }) => {
+            const changed = [...projectIds].sort().join('.') !== [...(current.projectIds ?? [])].sort().join('.');
+            const patch = { projectIds, taskId };
+            if (project && changed && projectIds.length === 1) patch.billable = project.billable;
             // Description typed + project chosen = ready to go: start the timer immediately.
-            if (autoStart && projectId && desc.trim()) startTimer(patch);
+            if (autoStart && projectIds.length && desc.trim()) startTimer(patch);
             else setFields(patch);
           }}
         />
@@ -608,12 +611,12 @@ function groupIntoWeeks(entries, weekStart) {
   return weeks;
 }
 
-/** Bundles identical activities of a day (same description, project, task, tags, billable). */
+/** Bundles identical activities of a day (same description, projects, task, tags, billable). */
 function groupSimilar(entries) {
   const map = new Map();
   const out = [];
   for (const e of entries) {
-    const key = [e.description, e.projectId, e.taskId, e.billable, [...e.tagIds].sort((a, b) => a - b).join('.')].join('|');
+    const key = [e.description, entryProjectIds(e).join('.'), e.taskId, e.billable, [...e.tagIds].sort((a, b) => a - b).join('.')].join('|');
     let g = map.get(key);
     if (!g) {
       g = { key, entries: [] };
@@ -712,12 +715,13 @@ function EntryRow({ entry, actions, timeFormat, group, child }) {
         </div>
         <div className="entry-meta">
           <ProjectPicker
-            projectId={entry.projectId}
+            projectIds={entryProjectIds(entry)}
             taskId={entry.taskId}
             fallback={entry}
-            onChange={({ projectId, taskId, project }) => {
-              const patch = { projectId, taskId };
-              if (project && projectId !== entry.projectId) patch.billable = project.billable;
+            onChange={({ projectIds, taskId, project }) => {
+              const changed = [...projectIds].sort().join('.') !== [...entryProjectIds(entry)].sort().join('.');
+              const patch = { projectIds, taskId };
+              if (project && changed && projectIds.length === 1) patch.billable = project.billable;
               update(patch);
             }}
           />

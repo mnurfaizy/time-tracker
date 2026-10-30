@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Mic } from 'lucide-react';
 import { interpret, titleCase } from '../../../extension/matcher.js';
 import { pickEngine, listenOnce, speechErrorMessage } from '../../../extension/speech.js';
+import { wsHeaders } from '../api.js';
 
 const LANGS = { 'id-ID': 'Bahasa Indonesia', 'en-US': 'English' };
 
@@ -21,7 +22,7 @@ function storedLang() {
 async function transcribe(blob, lang) {
   const res = await fetch(`/api/transcribe?lang=${lang.startsWith('en') ? 'en' : 'id'}`, {
     method: 'POST',
-    headers: { 'X-Requested-With': 'fetch', 'Content-Type': blob.type || 'audio/webm' },
+    headers: { 'X-Requested-With': 'fetch', 'Content-Type': blob.type || 'audio/webm', ...wsHeaders() },
     credentials: 'same-origin',
     body: blob,
   });

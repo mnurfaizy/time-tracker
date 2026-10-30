@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useData } from '../store.jsx';
 import { Popover, useToggle } from './ui.jsx';
+import { WorkspaceSwitcher } from './Workspaces.jsx';
 
 export function Logo() {
   return (
@@ -50,7 +51,8 @@ function UserCard() {
 }
 
 export function Layout() {
-  const { settings, isAdmin, users, reloadUsers } = useData();
+  const { settings, isAdmin, users, reloadUsers, workspaces, canCreateWorkspace } = useData();
+  const hasSwitcher = workspaces.length > 1 || canCreateWorkspace;
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const pendingCount = isAdmin ? users.filter((u) => u.pending).length : 0;
@@ -67,7 +69,8 @@ export function Layout() {
 
   const sections = [
     {
-      label: settings.workspaceName,
+      // With the switcher on top the workspace name is already shown there.
+      label: hasSwitcher ? 'Track' : settings.workspaceName,
       items: [
         { to: '/tracker', label: 'Time Tracker', icon: Timer },
         { to: '/calendar', label: 'Calendar', icon: CalendarDays },
@@ -102,6 +105,7 @@ export function Layout() {
       </header>
       <aside className="sidebar">
         <NavLink to="/tracker" className="sidebar-brand"><Logo /></NavLink>
+        <WorkspaceSwitcher />
         <nav className="sidebar-nav">
           {sections.map((section) => (
             <div key={section.label} className="sidebar-group">

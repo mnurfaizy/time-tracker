@@ -1,5 +1,16 @@
+import { slugFromPath } from '../../shared/workspace.js';
+
+// Workspace named in the URL (/multipolar/tracker -> "multipolar"); null on the root links, which belong
+// to the main workspace. The app runs under that prefix (router basename) and tells the API about it.
+export const urlWorkspace = slugFromPath(window.location.pathname);
+export const basename = urlWorkspace ? `/${urlWorkspace}` : '';
+export const wsHeaders = () => (urlWorkspace ? { 'X-Workspace': urlWorkspace } : {});
+
+/** Plain links into the API (downloads, Google sign-in) carry the workspace as ?ws=. */
+export const apiLink = (path) => (urlWorkspace ? `${path}${path.includes('?') ? '&' : '?'}ws=${encodeURIComponent(urlWorkspace)}` : path);
+
 async function request(method, url, body) {
-  const headers = { 'X-Requested-With': 'fetch' };
+  const headers = { 'X-Requested-With': 'fetch', ...wsHeaders() };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(`/api${url}`, {
     method,

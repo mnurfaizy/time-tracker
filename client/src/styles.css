@@ -217,6 +217,29 @@ select.input { padding-right: 10px; font-weight: 600; }
 .user-card-chevron { color: var(--muted); flex: none; }
 .avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--primary); color: #fff; font-weight: 700; flex: none; }
 .user-menu { min-width: 220px; }
+.ws-switch {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; margin-bottom: 4px; text-align: left;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); transition: box-shadow 0.15s;
+}
+.ws-switch:hover { box-shadow: var(--shadow-raised); }
+.ws-switch-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ws-switch-label { font-size: 11px; font-weight: 700; color: var(--muted); }
+.ws-switch-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.ws-mark {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; border-radius: 8px;
+  background: var(--primary-soft); color: var(--primary); font-size: 13px; font-weight: 800;
+}
+.ws-menu { min-width: 240px; }
+.ws-menu .ws-mark { width: 24px; height: 24px; font-size: 12px; }
+.ws-menu-name { flex: 1; min-width: 0; }
+.menu-item svg.ws-menu-check { color: var(--primary); }
+.menu-sep { height: 1px; margin: 6px 4px; background: var(--border); }
+.input-prefixed { display: flex; align-items: stretch; }
+.input-prefixed .input-prefix {
+  display: flex; align-items: center; padding: 0 10px; border: 1px solid var(--border); border-right: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md); background: var(--surface-muted); color: var(--muted); font-size: 13px; white-space: nowrap;
+}
+.input-prefixed .input { border-top-left-radius: 0; border-bottom-left-radius: 0; min-width: 0; }
 .sidebar-backdrop { display: none; }
 
 .main { flex: 1; min-width: 0; }
@@ -430,6 +453,9 @@ select.filter-btn { padding-right: 10px; }
 .project-label { display: inline-flex; align-items: center; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text); }
 .project-label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-label-client { color: var(--muted); font-weight: 500; }
+.project-label-extra { margin-left: 6px; flex: none; font-size: 11px; font-weight: 700; line-height: 1; color: var(--muted); background: var(--surface-muted); border-radius: var(--pill); padding: 3px 6px; }
+.picker-hint { padding: 6px 12px 8px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+.picker-item .checkbox { flex: none; }
 
 .tag-btn, .billable-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 6px; border-radius: var(--pill); color: var(--muted); flex: none; }
 .tag-btn:hover, .billable-btn:hover { background: var(--surface-muted); color: var(--text-2); }

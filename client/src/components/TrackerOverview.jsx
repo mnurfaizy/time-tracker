@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Timer, CircleDollarSign, CalendarDays, ChevronLeft, ChevronRight, Check, UserPlus, Copy } from 'lucide-react';
-import { api } from '../api.js';
+import { api, basename } from '../api.js';
 import { useData } from '../store.jsx';
 import { addDays, startOfDay, startOfWeek, dayKeyLocal, WEEKDAYS, DAY, pad } from '../utils/time.js';
 
@@ -108,7 +108,7 @@ export function TrackerOverview({ entriesVersion, running }) {
     setMonth(new Date(d.getFullYear(), d.getMonth() + dir, 1).getTime());
   };
 
-  const signupLink = `${window.location.origin}/signup`;
+  const signupLink = `${window.location.origin}${basename}/signup`;
   const copyInvite = async () => {
     try {
       await navigator.clipboard.writeText(signupLink);

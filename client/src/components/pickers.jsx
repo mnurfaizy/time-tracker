@@ -27,17 +27,64 @@ export function ProjectLabel({ project, task, clientName, fallback }) {
   );
 }
 
-export function ProjectPicker({ projectId, taskId, onChange, fallback, emptyLabel = 'Project', className = '' }) {
+const sameIdSet = (a, b) => [...(a ?? [])].sort((x, y) => x - y).join('.') === [...(b ?? [])].sort((x, y) => x - y).join('.');
+
+/**
+ * Multi-project picker: an entry can carry several projects (attribution counts fully for
+ * each, like tags). Tick the checkboxes to build a set; click a project's name (or a task)
+ * to track just that one. Changes made with the checkboxes commit when the popover closes.
+ */
+export function ProjectPicker({ projectIds, taskId, onChange, fallback, emptyLabel = 'Project', className = '' }) {
   const { projects, projectById, clientById, canCreate } = useData();
   const ref = useRef(null);
-  const [open, setOpen, toggle, close] = useToggle();
+  const [open, setOpen] = useToggle();
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState({});
   const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState(projectIds ?? []);
+  const [draftTask, setDraftTask] = useState(taskId ?? null);
 
-  const project = projectId ? projectById.get(projectId) : null;
-  const task = project && taskId ? project.tasks.find((t) => t.id === taskId) : null;
-  const hasValue = !!(project || (projectId && fallback?.projectName));
+  const selected = projectIds ?? [];
+  // Chips: store data first, entry fallback (deleted/archived projects) second.
+  const chips = selected.map((pid) => {
+    const p = projectById.get(pid) ?? fallback?.projects?.find((x) => x.id === pid);
+    if (p) return p;
+    if (fallback && pid === fallback.projectId) {
+      return { id: pid, name: fallback.projectName, color: fallback.projectColor, clientId: fallback.clientId, clientName: fallback.clientName };
+    }
+    return null;
+  }).filter((p) => p?.name);
+  const primary = chips[0] ?? null;
+  const primaryTask = primary && taskId != null ? primary.tasks?.find((t) => t.id === taskId) ?? fallback?.projects?.find((x) => x.id === primary.id)?.tasks?.find((t) => t.id === taskId) : null;
+  const hasValue = chips.length > 0;
+
+  const openPicker = () => {
+    setDraft(selected);
+    setDraftTask(taskId ?? null);
+    setSearch('');
+    setOpen(true);
+  };
+  const closePicker = () => {
+    setOpen(false);
+    if (!sameIdSet(draft, selected) || (draftTask ?? null) !== (taskId ?? null)) {
+      const p = draft[0] != null ? projectById.get(draft[0]) ?? null : null;
+      onChange({ projectIds: draft, taskId: draftTask ?? null, project: p });
+    }
+  };
+
+  const commit = (ids, tid) => {
+    setOpen(false);
+    const p = ids[0] != null ? projectById.get(ids[0]) ?? null : null;
+    onChange({ projectIds: ids, taskId: tid ?? null, project: p });
+  };
+
+  const toggleDraft = (p, on) =>
+    setDraft((d) => {
+      if (on) return d.includes(p.id) ? d : [...d, p.id];
+      const next = d.filter((x) => x !== p.id);
+      if (draftTask != null && p.tasks?.some((t) => t.id === draftTask)) setDraftTask(null);
+      return next;
+    });
 
   const groups = useMemo(() => {
     const term = norm(search).trim();
@@ -56,37 +103,36 @@ export function ProjectPicker({ projectId, taskId, onChange, fallback, emptyLabe
     return [...byClient.entries()].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
   }, [projects, clientById, search]);
 
-  const choose = (p, t) => {
-    onChange({ projectId: p?.id ?? null, taskId: t?.id ?? null, project: p ?? null });
-    close();
-    setSearch('');
-  };
-
   return (
     <>
       <button
         ref={ref}
         type="button"
         className={`project-picker-btn ${hasValue ? 'has-value' : ''} ${className}`}
-        onClick={() => {
-          toggle();
-          setSearch('');
-        }}
+        onClick={() => (open ? closePicker() : openPicker())}
       >
         {hasValue ? (
-          <ProjectLabel project={project} task={task} clientName={project?.clientId ? clientById.get(project.clientId)?.name : null} fallback={project ? null : fallback} />
+          <span className="project-label">
+            <span className="dot" style={{ background: primary.color ?? '#999' }} />
+            <span className="project-label-text">
+              {primary.name}
+              {primaryTask && `: ${primaryTask.name}`}
+              {primary.clientName && <span className="project-label-client"> - {primary.clientName}</span>}
+            </span>
+            {chips.length > 1 && <span className="project-label-extra" title={chips.map((p) => p.name).join(', ')}>+{chips.length - 1}</span>}
+          </span>
         ) : (
           <span className="project-empty"><CirclePlus size={18} /> {emptyLabel}</span>
         )}
       </button>
-      <Popover anchorRef={ref} open={open} onClose={close} width={380} className="picker">
+      <Popover anchorRef={ref} open={open} onClose={closePicker} width={380} className="picker">
         <div className="picker-search">
           <Search size={16} />
           <input autoFocus data-autofocus placeholder="Search project or client" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="picker-list">
           {!search && (
-            <button type="button" className={`picker-item ${!projectId ? 'selected' : ''}`} onClick={() => choose(null, null)}>
+            <button type="button" className={`picker-item ${!selected.length ? 'selected' : ''}`} onClick={() => commit([], null)}>
               <span className="dot" style={{ background: '#C6D2D9' }} /> No project
             </button>
           )}
@@ -94,11 +140,13 @@ export function ProjectPicker({ projectId, taskId, onChange, fallback, emptyLabe
             <div key={clientName || '__none'}>
               <div className="picker-group">{clientName || 'No client'}</div>
               {items.map(({ project: p, tasks, forceOpen }) => {
+                const checked = draft.includes(p.id);
                 const isOpen = forceOpen || expanded[p.id];
                 return (
                   <div key={p.id}>
-                    <div className={`picker-item ${p.id === projectId && !taskId ? 'selected' : ''}`}>
-                      <button type="button" className="picker-item-main" onClick={() => choose(p, null)} style={{ color: p.color }}>
+                    <div className={`picker-item ${checked && draft.length === 1 && draftTask == null ? 'selected' : ''}`}>
+                      <Checkbox checked={checked} onChange={(on) => toggleDraft(p, on)} />
+                      <button type="button" className="picker-item-main" onClick={() => commit([p.id], null)} title="Track just this project" style={{ color: p.color }}>
                         <span className="dot" style={{ background: p.color }} />
                         <span className="truncate">{p.name}</span>
                       </button>
@@ -113,8 +161,8 @@ export function ProjectPicker({ projectId, taskId, onChange, fallback, emptyLabe
                         <button
                           key={t.id}
                           type="button"
-                          className={`picker-item picker-task ${t.id === taskId ? 'selected' : ''}`}
-                          onClick={() => choose(p, t)}
+                          className={`picker-item picker-task ${t.id === draftTask ? 'selected' : ''}`}
+                          onClick={() => commit(draft.includes(p.id) ? draft : [...draft, p.id], t.id)}
                         >
                           {t.name}
                         </button>
@@ -126,6 +174,7 @@ export function ProjectPicker({ projectId, taskId, onChange, fallback, emptyLabe
           ))}
           {groups.length === 0 && <div className="picker-empty">No matching projects</div>}
         </div>
+        <div className="picker-hint">Tick several projects to count this entry for each. Click a name to use just that one.</div>
         {canCreate && (
           <button
             type="button"
@@ -145,7 +194,7 @@ export function ProjectPicker({ projectId, taskId, onChange, fallback, emptyLabe
           onClose={() => setCreating(false)}
           onSaved={(p) => {
             setCreating(false);
-            choose(p, null);
+            commit([p.id], null);
           }}
         />
       )}
